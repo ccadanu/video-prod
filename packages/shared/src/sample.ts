@@ -1,6 +1,7 @@
 import type { Jenis } from './jenis';
 import type { Rasio } from './briefs';
 import type { Status } from './status';
+import { addDays as addDaysYmd, addWorkdays, mondayOf as mondayOfYmd, nextWorkday, todayJakarta as todayYmd } from './weeks';
 
 /** Data contoh (dari mockup) untuk seed dev dan mode pratinjau. Bukan data nyata. */
 export interface SampleBrief {
@@ -199,3 +200,115 @@ export const SAMPLE_QUEUE: readonly SampleQueueItem[] = [
   { judul: 'Editing Testimoni Pelanggan', produk: 'ETAWAKU', kategori: 'Product Story', jenis: 'editing_only', rasio: '9:16', durasiDetik: 45, catatan: 'Footage mentah ada di folder Drive pada naskah.', daysAgo: 1 },
   { judul: 'Full AI Visual Produk Baru', produk: 'ETALLAGEN', kategori: 'Lifestyle/Mood', jenis: 'full_ai', rasio: '9:16', durasiDetik: 20, catatan: '', daysAgo: 0 },
 ];
+
+// ───────────── Riwayat contoh (Dashboard, KPI, Blind Review) ─────────────
+
+export interface SampleHistoryItem {
+  judul: string;
+  produk: string;
+  kategori: string;
+  jenis: Jenis;
+  rasio: Rasio;
+  durasiDetik: number | null;
+  requester: 'sari' | 'budi' | 'maya';
+  submittedAt: string;
+  completedAt: string;
+  revisions: number;
+  vg: 'hardi' | 'yofa' | null;
+  editor: 'dio' | 'rara' | null;
+  /** Hari syuting (Weekly) dan kapan footage diserahkan. */
+  shoot: { weekStart: string; day: number; handedAt: string } | null;
+  /** Tenggat editing dan kapan hasil pertama dikirim. */
+  edit: { due: string; deliveredAt: string } | null;
+  /** Rating 1–5 yang akan diberikan User pada siklus evaluasi (null = tidak mengisi). */
+  rating: number | null;
+}
+
+const at = (ymd: string): string => `${ymd}T03:30:00.000Z`; // 10.30 WIB
+
+/** Konten selesai berdurasi ±3 bulan ke belakang dengan keterlambatan & revisi yang bervariasi (deterministik). */
+export function sampleHistory(today: string = todayYmd(), count = 84): SampleHistoryItem[] {
+  const r = mulberry(7);
+  const pick = <T>(a: readonly T[]): T => a[Math.floor(r() * a.length)]!;
+  const KAT = ['Talking Head', 'Talking Head', 'Product Story', 'Product Story', 'Science/Demo', 'Lifestyle/Mood', 'Infografis', 'Character/Skit', 'Company Kit'];
+  const PRODUK = ['FITGRAINS', 'GLUTAFIELD', 'ETAWAKU', 'ETALLAGEN', 'ETAWALIN', 'ASA', 'MONGOL KHAN'];
+  const JENIS_POOL: Jenis[] = ['shooting_edit', 'shooting_edit', 'shooting_edit', 'shooting_only', 'photoshoot', 'full_ai', 'editing_only', 'editing_only', 'motion', 'motion'];
+  const FRASA = ['REKAP', 'TIPS', 'TESTIMONI', 'PROMO', 'EDUKASI', 'BEHIND THE SCENE', 'UNBOXING', 'TUTORIAL'];
+  const out: SampleHistoryItem[] = [];
+  for (let i = 0; i < count; i++) {
+    const jenis = pick(JENIS_POOL);
+    const submitted = addDaysYmd(today, -(18 + Math.floor(r() * 95)));
+    const revisions = r() < 0.7 ? 0 : r() < 0.8 ? 1 : 2;
+    const vg = jenis === 'full_ai' || jenis === 'editing_only' || jenis === 'motion' ? null : pick(['hardi', 'yofa'] as const);
+    const editor = jenis === 'shooting_only' || jenis === 'photoshoot' ? null : pick(['dio', 'rara'] as const);
+    const shootLate = r() < 0.15;
+    const editLate = r() < 0.2;
+    let shoot: SampleHistoryItem['shoot'] = null;
+    let edit: SampleHistoryItem['edit'] = null;
+    let cursor = submitted;
+    if (vg) {
+      const shootDate = nextWorkday(addDaysYmd(submitted, 3));
+      const handed = shootLate ? nextWorkday(addDaysYmd(shootDate, 1)) : shootDate;
+      const week = mondayOfYmd(shootDate);
+      shoot = { weekStart: week, day: Math.round((new Date(`${shootDate}T00:00:00Z`).getTime() - new Date(`${week}T00:00:00Z`).getTime()) / 86_400_000), handedAt: at(handed) };
+      cursor = handed;
+    }
+    if (editor) {
+      const due = addWorkdays(cursor, vg ? 2 : 1);
+      const delivered = editLate ? nextWorkday(addDaysYmd(due, 1)) : due;
+      edit = { due, deliveredAt: at(delivered) };
+      cursor = delivered;
+    }
+    const completed = addDaysYmd(cursor, 1 + revisions * 2);
+    const quality = 4.7 - revisions * 0.7 - (shootLate ? 0.3 : 0) - (editLate ? 0.5 : 0) + (r() - 0.5) * 0.8;
+    out.push({
+      judul: `${pick(FRASA)} ${pick(PRODUK)} ${i + 1}`, produk: pick(PRODUK), kategori: pick(KAT), jenis,
+      rasio: pick(['9:16', '9:16', '16:9', '1:1'] as const), durasiDetik: jenis === 'photoshoot' ? null : pick([20, 30, 45, 60]),
+      requester: pick(['sari', 'budi', 'maya'] as const), submittedAt: at(submitted), completedAt: at(completed), revisions, vg, editor, shoot, edit,
+      rating: r() < 0.85 ? Math.max(1, Math.min(5, Math.round(quality))) : null,
+    });
+  }
+  return out.filter((x) => x.completedAt.slice(0, 10) < today);
+}
+
+export interface SampleCycle {
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  status: 'open' | 'closed';
+}
+
+/** Siklus evaluasi 2-mingguan: satu siklus berjalan (terbuka) dan siklus-siklus sebelumnya yang sudah ditutup. */
+export function sampleCycles(today: string = todayYmd(), closed = 6): SampleCycle[] {
+  const out: SampleCycle[] = [{ name: 'Evaluasi 2 mingguan (berjalan)', periodStart: addDaysYmd(today, -13), periodEnd: today, status: 'open' }];
+  for (let i = 0; i < closed; i++) {
+    const end = addDaysYmd(today, -14 - 14 * i);
+    out.push({ name: `Evaluasi 2 mingguan #${closed - i}`, periodStart: addDaysYmd(end, -13), periodEnd: end, status: 'closed' });
+  }
+  return out;
+}
+
+/** Komentar contoh blind review (tanpa identitas). */
+export const SAMPLE_EVAL_COMMENTS = {
+  good: [
+    'Hasil editing rapi dan sesuai referensi. Komunikasi tim jelas.',
+    'Proses syuting terjadwal dengan baik, talent dan lokasi sudah siap.',
+    'Revisi kecil ditangani cepat.',
+    'Status konten mudah dilacak, tidak perlu bertanya ke tim.',
+  ],
+  improve: [
+    'Kabari lebih awal bila jadwal syuting bergeser.',
+    'Teks harga dan promo perlu dicek ulang sebelum dikirim ke review.',
+    'Estimasi selesai sebaiknya dikonfirmasi saat brief masuk.',
+    'Minta catatan revisi yang lebih spesifik agar tidak bolak-balik.',
+  ],
+} as const;
+
+export const SAMPLE_FGD = {
+  notes: 'FGD internal: tim sepakat memperjelas estimasi selesai di awal, memeriksa teks promo sebelum review, dan menjadwalkan ulang lebih awal bila ada pergeseran.',
+  actions: [
+    { text: 'Tambahkan checklist cek teks harga/promo sebelum kirim ke In Review', done: true },
+    { text: 'Beri tahu User maksimal H-1 bila jadwal syuting bergeser', done: false },
+    { text: 'Konfirmasi estimasi selesai saat brief Daily divalidasi', done: false },
+  ],
+} as const;

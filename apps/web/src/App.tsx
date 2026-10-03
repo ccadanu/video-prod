@@ -8,7 +8,11 @@ import { AdminUsers } from './pages/AdminUsers';
 import { BriefOrder } from './pages/BriefOrder';
 import { BriefWizard } from './pages/BriefWizard';
 import { DailyShooting } from './pages/DailyShooting';
+import { BlindReview } from './pages/BlindReview';
+import { Dashboard } from './pages/Dashboard';
 import { EditingExecution } from './pages/EditingExecution';
+import { KpiIndividu } from './pages/KpiIndividu';
+import { ProductionBoard } from './pages/ProductionBoard';
 import { EditingSchedule } from './pages/EditingSchedule';
 import { ComingSoon } from './pages/ComingSoon';
 import { Login } from './pages/Login';
@@ -53,7 +57,7 @@ function Pending({ item }: { item: NavItem }) {
 }
 
 /** Halaman yang sudah punya rute sendiri; sisanya tampil sebagai "Sedang dibangun". */
-const IMPLEMENTED = new Set(['admin-users', 'brief-order', 'weekly-listing', 'daily-shooting', 'editing-schedule', 'editing-execution']);
+const IMPLEMENTED = new Set(['admin-users', 'brief-order', 'weekly-listing', 'daily-shooting', 'editing-schedule', 'editing-execution', 'dashboard', 'kpi', 'blind-review', 'production-board']);
 const PENDING_ITEMS = [...NAV, ...flattenNav(NAV).filter((n) => !NAV.includes(n))].filter((n) => !IMPLEMENTED.has(n.key));
 
 export function App() {
@@ -73,6 +77,10 @@ export function App() {
         <Route path="brief-order/:id/ubah" element={<EditBrief />} />
         <Route path="production-board/weekly-listing" element={<WeeklyListing />} />
         <Route path="production-board/daily-shooting" element={<DailyShooting />} />
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="kpi" element={<KpiIndividu />} />
+        <Route path="blind-review" element={<BlindReview />} />
+        <Route path="production-board" element={<ProductionBoard />} />
         <Route path="production-board/editing-schedule" element={<EditingSchedule />} />
         <Route path="production-board/editing-execution" element={<EditingExecution />} />
         <Route path="admin/users" element={<AdminUsers />} />

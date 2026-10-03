@@ -40,11 +40,16 @@ function Group({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) 
   const Icon = ICON[item.key];
   return (
     <div>
-      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className={cx(ITEM, 'w-full', active && 'text-white')}>
-        <Icon size={16} />
-        {item.label}
-        <ChevronDown size={14} className={cx('ml-auto transition-transform', !open && '-rotate-90')} />
-      </button>
+      <div className="flex items-center gap-0.5">
+        {/* Judul grup membuka ringkasan Production Board; chevron hanya melipat sub-menu. */}
+        <NavLink to={item.path} end onClick={onNavigate} className={({ isActive }) => cx(ITEM, 'min-w-0 flex-1', active && 'text-white', isActive && ACTIVE)}>
+          <Icon size={16} />
+          {item.label}
+        </NavLink>
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={`${open ? 'Lipat' : 'Buka'} sub-menu ${item.label}`} className={cx(ITEM, 'px-2')}>
+          <ChevronDown size={14} className={cx('transition-transform', !open && '-rotate-90')} />
+        </button>
+      </div>
       {open && (
         <div className="ml-[18px] mt-0.5 flex flex-col gap-0.5 border-l border-white/10 pl-2">
           {item.children?.map((c) => (

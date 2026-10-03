@@ -48,6 +48,21 @@ Hal-hal yang diputuskan sementara saat membangun. Tandai yang sudah dikonfirmasi
 | 39 | Revisi dari User kembali ke editor yang sama (To Do + alasan revisi). Revisi tanpa editor muncul di antrean Leader | PRD §4.4 | Usulan |
 | 40 | Hanya Editor yang mulai/mencentang/mengirim hasil; Leader meng-assign; Leader dan Admin hanya membaca Editing Execution, Admin hanya membaca Brief Editing Schedule | PRD §2 | Usulan |
 | 41 | Shooting Only dan Photoshoot tidak lewat Editor: bahan review User = footage Drive dari VG, tampil di detail Brief Order | PRD §4.2 | Disepakati |
+| 42 | Spesifikasi Dashboard Statistik/KPI/RoG Evaluasi (dokumen terpisah) belum tersedia; definisi metrik di bawah adalah usulan dari PRD §10–13. Semua dihitung dari data aplikasi di `packages/shared/src/stats.ts` | PRD §10–12 | Perlu konfirmasi |
+| 43 | Periode 2 Minggu / 1 Bulan / 3 Bulan / 1 Tahun = 14/30/90/365 hari terakhir sampai hari ini (WIB); Δ membandingkan dengan jendela sebelumnya yang sama panjang | PRD §10 | Usulan |
+| 44 | Total Konten Selesai = konten Complete pada periode (tanggal selesai). Rata-rata Order = order masuk pada periode, ditampilkan sebagai Weekly per pekan dan Daily per hari kerja | PRD §10.1 | Usulan |
+| 45 | Kesesuaian SLA: syuting tepat = footage diserahkan pada/sebelum hari syuting; editing tepat = hasil pertama dikirim pada/sebelum tenggat yang ditetapkan Leader. Menggabungkan keduanya dalam satu donut dengan rincian | PRD §10.1 | Usulan |
+| 46 | Revision Rate = % konten selesai pada periode yang pernah direvisi (≥1). Ambang ≤ 25% (PRD §13 menyebut "per hari"; di sini dihitung per periode) | PRD §13 | Perlu konfirmasi |
+| 47 | Skor Kepuasan = rata-rata rating blind review (1–5) dari siklus yang sudah ditutup, dikaitkan ke konten yang selesai pada periode. Jadi konten yang baru selesai belum punya rating sampai siklusnya ditutup | PRD §10.1, §12 | Usulan |
+| 48 | Funnel memakai status konten saat ini (bukan riwayat per tahap); heatmap = status × jenis untuk konten yang sedang berjalan (semua periode) | PRD §10.1 | Usulan |
+| 49 | User melihat Dashboard sebagai baca-saja; nama pemohon lain disamarkan ("Pemohon 1…") dan hanya dirinya yang berlabel "Anda". Leader/Admin melihat nama | PRD §2 | Usulan |
+| 50 | Skor KPI 0–100 = 60% Kepuasan (rating/5) + 20% SLA (% tepat waktu) + 20% Revisi (% konten tanpa revisi). Komponen tanpa data dikeluarkan dan bobot dinormalkan ulang. Pita: ≥80 sesuai target, 60–79 perlu perhatian, <60 perlu coaching | PRD §11, §13 | Usulan |
+| 51 | Atribusi KPI: VG = yang menyerahkan footage (SLA syuting; revisi hanya untuk Shooting Only/Photoshoot karena footage-nya yang direview); Editor = editor yang di-assign (SLA editing; revisi hasil editing). Rating konten dibagi ke VG dan Editor yang terlibat | PRD §11 | Usulan |
+| 52 | Akses KPI berjenjang: Leader/Admin melihat semua individu; Videografer dan Editor hanya scorecard dirinya sendiri; User tidak mengakses KPI | PRD §11 | Disepakati |
+| 53 | Blind review: siklus 2-mingguan (periode maks 31 hari). Leader mendistribusikan form ke User yang punya konten selesai pada periode; form menilai tiap konten 1–5 + dua komentar opsional. Jawaban disimpan tanpa pengisi dan waktu; hanya partisipasi yang tercatat. Hasil muncul setelah ≥3 responden agar tidak mengarah ke satu orang | PRD §12 | Usulan |
+| 54 | Blind di lapisan aplikasi: tidak ada layar/API yang menampilkan pengisi. Rating terhubung ke konten (untuk KPI), sehingga bukan anonim kriptografis: admin database secara teknis bisa menautkannya ke pemohon konten | PRD §12 | Perlu konfirmasi |
+| 55 | Hasil siklus terbuka hanya untuk Leader/Admin; VG/Editor melihat hasil dan tindak lanjut setelah siklus ditutup. FGD berupa catatan + daftar tindak lanjut (centang selesai) yang ditulis Leader. Form bukan tiket revisi | PRD §12 | Usulan |
+| 56 | Production Board menjadi halaman ringkasan (strip KPI 2 minggu + funnel + pintasan); klik strip membuka Dashboard (Leader/Admin/User) atau KPI Individu (VG/Editor) | PRD §3, §10 | Usulan |
 
 ## Teknis
 

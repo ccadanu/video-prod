@@ -28,6 +28,26 @@ import {
   sampleExecution,
   summarize,
   type DailyCard,
+  MIN_RESPONSES,
+  SAMPLE_EVAL_COMMENTS,
+  SAMPLE_FGD,
+  actionSchema,
+  buildDashboard,
+  buildKpi,
+  cycleSchema,
+  fgdSchema,
+  isPeriod,
+  responseSchema,
+  sampleCycles,
+  sampleHistory,
+  shuffled,
+  type EvalCycle,
+  type EvalForm,
+  type EvalFormItem,
+  type EvalResult,
+  type Jenis,
+  type Period,
+  type StatRow,
   type DeliverableVersion,
   type EditPriority,
   type EditRow,
@@ -92,13 +112,16 @@ interface Rec extends UserDto {
   password: string;
 }
 
-let nextId = 8;
+let nextId = 11;
 const users: Rec[] = [
   { id: 1, email: 'admin@ccp.local', name: 'Admin CCP', role: 'admin', unit: 'CCP', jabatan: 'Admin', active: true, password: DEMO_PASSWORD },
   { id: 2, email: 'leader@ccp.local', name: 'Nadia Pratama', role: 'leader', unit: 'CCP', jabatan: 'Leader Produksi', active: true, password: DEMO_PASSWORD },
   { id: 3, email: 'hardi@ccp.local', name: 'Hardi', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', active: true, password: DEMO_PASSWORD },
   { id: 4, email: 'yofa@ccp.local', name: 'Yofa', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', active: true, password: DEMO_PASSWORD },
   { id: 5, email: 'dio@ccp.local', name: 'Dio', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', active: true, password: DEMO_PASSWORD },
+  { id: 8, email: 'sari@ccp.local', name: 'Sari Wulandari', role: 'user', unit: 'Sales', jabatan: 'Sales Executive', active: true, password: DEMO_PASSWORD },
+  { id: 9, email: 'budi@ccp.local', name: 'Budi Santoso', role: 'user', unit: 'Operasional', jabatan: 'Staff Operasional', active: true, password: DEMO_PASSWORD },
+  { id: 10, email: 'maya@ccp.local', name: 'Maya Putri', role: 'user', unit: 'Marketing', jabatan: 'Brand Executive', active: true, password: DEMO_PASSWORD },
   { id: 7, email: 'rara@ccp.local', name: 'Rara', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', active: true, password: DEMO_PASSWORD },
   { id: 6, email: 'arya@ccp.local', name: 'Arya Akbar Subakti', role: 'user', unit: 'Marketing', jabatan: 'Marketing Staff', active: true, password: DEMO_PASSWORD },
 ];
@@ -369,6 +392,84 @@ function weekDto(week: string, viewer: Rec): WeekDto {
   };
 }
 
+// Riwayat ±3 bulan dan siklus evaluasi agar Dashboard, KPI, dan Blind Review berisi (sama dengan seed server).
+const HISTORY_IDS: Record<string, number> = { sari: 8, budi: 9, maya: 10, hardi: 3, yofa: 4, dio: 5, rara: 7 };
+const historyBriefs = sampleHistory().map((x) => {
+  const weekly = isWeekly(x.jenis);
+  const input = briefInputSchema.parse({
+    jenis: x.jenis, kategori: x.kategori, produk: x.produk, judul: x.judul, rasio: x.rasio, durasiDetik: x.durasiDetik,
+    linkDocs: 'https://docs.google.com/document/d/contoh', catatan: '',
+    attributes: weekly ? { talent: 'Rani', kostum: 'Casual', lokasi: 'Studio', lokasiDetail: '', properti: 'Box produk', desain: 'Tidak ada' } : null,
+  });
+  const vgId = x.vg ? HISTORY_IDS[x.vg]! : null;
+  const editorId = x.editor ? HISTORY_IDS[x.editor]! : null;
+  const rec = pushBrief(HISTORY_IDS[x.requester]!, input, 'complete', new Date(x.submittedAt), {
+    completedAt: x.completedAt, revisionCount: x.revisions, picId: editorId ?? vgId,
+    ...(x.shoot ? { weekStart: x.shoot.weekStart, day: x.shoot.day } : {}),
+    ...(x.shoot && vgId ? { proof: { storage: 'drive' as const, driveUrl: 'https://drive.google.com/drive/folders/riwayat', diskName: null, path: null, fileName: null, handedAt: x.shoot.handedAt, handedByName: nameOf(vgId) } } : {}),
+  });
+  if (x.edit && editorId) {
+    rec.ed = { editorId, bobot: 'gampang', priority: 'normal', scheduledFor: x.edit.due, dueDate: x.edit.due, startedAt: x.edit.deliveredAt, steps: [], versions: [{ version: 1, url: 'https://drive.google.com/file/d/riwayat/view', note: '', at: x.edit.deliveredAt, byName: nameOf(editorId) }] };
+  }
+  return { x, rec };
+});
+
+interface CycleRec {
+  id: number;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  status: 'open' | 'closed';
+  createdAt: string;
+  closedAt: string | null;
+  fgdAt: string | null;
+  fgdNotes: string;
+  invites: Map<number, boolean>;
+  actions: { id: number; text: string; done: boolean; createdAt: string }[];
+}
+const cycles: CycleRec[] = [];
+const responses: { cycleId: number; briefId: number; rating: number }[] = [];
+const comments: { cycleId: number; kind: 'good' | 'improve'; body: string }[] = [];
+let nextCycleId = 1;
+let nextActionId = 1;
+
+const ymdOfIso = (iso: string) => todayJakarta(new Date(iso));
+const eligibleFor = (userId: number, start: string, end: string) =>
+  briefs.filter((b) => b.requesterId === userId && b.status === 'complete' && b.completedAt !== null && ymdOfIso(b.completedAt) >= start && ymdOfIso(b.completedAt) <= end && !responses.some((r) => r.briefId === b.id));
+
+function newCycle(name: string, periodStart: string, periodEnd: string): CycleRec {
+  const rec: CycleRec = { id: nextCycleId++, name, periodStart, periodEnd, status: 'open', createdAt: new Date().toISOString(), closedAt: null, fgdAt: null, fgdNotes: '', invites: new Map(), actions: [] };
+  for (const u of users.filter((x) => x.role === 'user')) if (eligibleFor(u.id, periodStart, periodEnd).length > 0) rec.invites.set(u.id, false);
+  cycles.push(rec);
+  return rec;
+}
+
+{
+  const all = sampleCycles();
+  for (const [ci, c] of [...all].reverse().entries()) {
+    const rec = newCycle(c.name, c.periodStart, c.periodEnd);
+    if (c.status === 'open') continue;
+    const respondents = new Set<number>();
+    for (const { x, rec: b } of historyBriefs) {
+      const d = x.completedAt.slice(0, 10);
+      if (x.rating === null || d < c.periodStart || d > c.periodEnd) continue;
+      responses.push({ cycleId: rec.id, briefId: b.id, rating: x.rating });
+      respondents.add(b.requesterId);
+    }
+    for (const uid of respondents) rec.invites.set(uid, true);
+    if (respondents.size >= 3) {
+      for (const kind of ['good', 'improve'] as const) for (let k = 0; k < 2; k++) comments.push({ cycleId: rec.id, kind, body: SAMPLE_EVAL_COMMENTS[kind][(ci + k) % SAMPLE_EVAL_COMMENTS[kind].length]! });
+    }
+    rec.status = 'closed';
+    rec.closedAt = `${c.periodEnd}T09:00:00Z`;
+    if (ci === all.length - 2) {
+      rec.fgdAt = c.periodEnd;
+      rec.fgdNotes = SAMPLE_FGD.notes;
+      rec.actions = SAMPLE_FGD.actions.map((a) => ({ id: nextActionId++, text: a.text, done: a.done, createdAt: new Date().toISOString() }));
+    }
+  }
+}
+
 // ───────────── Pekan yang sedang berjalan (Daily Shooting) ─────────────
 
 const EXEC_WEEK = mondayOf(todayJakarta());
@@ -624,6 +725,163 @@ function editingRoute(method: string, path: string, body: unknown): unknown | un
     default:
       return undefined;
   }
+}
+
+// ───────────── Statistik & evaluasi (memori) ─────────────
+
+function statRows(): StatRow[] {
+  return briefs
+    .filter((b) => b.status !== 'draft')
+    .map((b) => {
+      const vg = b.proof ? users.find((u) => u.name === b.proof!.handedByName && u.role === 'videografer') : undefined;
+      const closedIds = new Set(cycles.filter((c) => c.status === 'closed').map((c) => c.id));
+      return {
+        id: b.id, jenis: b.input.jenis as Jenis, kategori: b.input.kategori, status: b.status, requesterId: b.requesterId, requesterName: nameOf(b.requesterId) ?? '—',
+        submittedAt: b.submittedAt, completedAt: b.completedAt, revisionCount: b.revisionCount,
+        shootDate: b.weekStart !== null && b.day !== null ? addDays(b.weekStart, b.day) : null,
+        handedAt: b.proof?.handedAt ?? null, vgId: vg?.id ?? null, vgName: vg?.name ?? null,
+        editDue: b.ed.dueDate, deliveredAt: b.ed.versions[0]?.at ?? null, editorId: b.ed.editorId, editorName: nameOf(b.ed.editorId),
+        ratings: responses.filter((r) => r.briefId === b.id && closedIds.has(r.cycleId)).map((r) => r.rating),
+      };
+    });
+}
+
+function periodOf(query: string | undefined): Period {
+  const p = new URLSearchParams(query ?? '').get('period') ?? '1m';
+  if (!isPeriod(p)) throw new ApiError(400, 'bad_period', 'Periode harus 2w, 1m, 3m, atau 1y');
+  return p;
+}
+
+function statsRoute(method: string, path: string): unknown | undefined {
+  const m = /^\/api\/stats\/(dashboard|kpi|pulse)(?:\?(.*))?$/.exec(path);
+  if (!m || method !== 'GET') return undefined;
+  const today = todayJakarta();
+  if (m[1] === 'dashboard') {
+    const u = role('user', 'leader', 'admin');
+    return { dashboard: buildDashboard(statRows(), periodOf(m[2]), today, { role: u.role, id: u.id }) };
+  }
+  if (m[1] === 'kpi') {
+    const u = role('leader', 'videografer', 'editor', 'admin');
+    const people = users.filter((x) => (x.role === 'videografer' || x.role === 'editor') && x.active).map((x) => ({ id: x.id, name: x.name, role: x.role as 'videografer' | 'editor' }));
+    return { kpi: buildKpi(statRows(), people, periodOf(m[2]), today, { role: u.role, id: u.id }) };
+  }
+  const u = role('user', 'leader', 'videografer', 'editor', 'admin');
+  const d = buildDashboard(statRows(), '2w', today, { role: u.role, id: u.id });
+  return { pulse: { selesai: d.selesai, kepuasan: d.kepuasan, sla: d.sla, revisi: d.revisi, funnel: d.funnel, range: d.range } };
+}
+
+function cycleDto(c: CycleRec): EvalCycle {
+  return {
+    id: c.id, name: c.name, periodStart: c.periodStart, periodEnd: c.periodEnd, status: c.status, createdAt: c.createdAt, closedAt: c.closedAt,
+    invited: c.invites.size, submitted: [...c.invites.values()].filter(Boolean).length, fgdAt: c.fgdAt, fgdNotes: c.fgdNotes, actions: c.actions,
+  };
+}
+
+function evalRoute(method: string, path: string, body: unknown): unknown | undefined {
+  if (!path.startsWith('/api/eval/')) return undefined;
+  if (path === '/api/eval/cycles' && method === 'GET') {
+    const u = role('user', 'leader', 'videografer', 'editor', 'admin');
+    const sorted = [...cycles].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd) || b.id - a.id);
+    const visible = sorted.filter((c) => (u.role === 'user' ? c.invites.has(u.id) : u.role === 'leader' || u.role === 'admin' ? true : c.status === 'closed'));
+    return {
+      cycles: visible.map((c) => (u.role === 'user' ? { ...cycleDto(c), invited: 0, submitted: 0, fgdNotes: '', actions: [], me: { invited: true, submitted: c.invites.get(u.id)! } } : cycleDto(c))),
+    };
+  }
+  if (path === '/api/eval/cycles' && method === 'POST') {
+    role('leader');
+    const input = cycleSchema.parse(body);
+    if (input.periodEnd > todayJakarta()) throw conflict('future_period', 'Akhir periode tidak boleh di masa depan');
+    return { id: newCycle(input.name || `Evaluasi ${input.periodStart} s.d. ${input.periodEnd}`, input.periodStart, input.periodEnd).id };
+  }
+  let m = /^\/api\/eval\/cycles\/(\d+)\/(close|result|form|response|fgd|actions)$/.exec(path);
+  if (m) {
+    const c = cycles.find((x) => x.id === Number(m![1]));
+    const what = m[2]!;
+    const missing = () => new ApiError(404, 'not_found', 'Siklus tidak ditemukan');
+    if (what === 'close' && method === 'POST') {
+      role('leader');
+      if (!c) throw missing();
+      if (c.status !== 'open') throw conflict('bad_state', 'Siklus sudah ditutup');
+      c.status = 'closed';
+      c.closedAt = new Date().toISOString();
+      return { ok: true };
+    }
+    if (what === 'result' && method === 'GET') {
+      const u = role('leader', 'admin', 'videografer', 'editor');
+      if (!c) throw missing();
+      if (u.role !== 'leader' && u.role !== 'admin' && c.status !== 'closed') throw conflict('not_closed', 'Hasil tersedia setelah siklus ditutup');
+      const respondents = [...c.invites.values()].filter(Boolean).length;
+      const base = { cycleId: c.id, responses: respondents, enough: respondents >= MIN_RESPONSES, min: MIN_RESPONSES };
+      if (!base.enough) return { result: { ...base, avg: null, dist: [0, 0, 0, 0, 0], byJenis: [], good: [], improve: [] } satisfies EvalResult };
+      const rs = responses.filter((r) => r.cycleId === c.id);
+      const dist = [0, 0, 0, 0, 0];
+      for (const r of rs) dist[r.rating - 1]!++;
+      const per = new Map<Jenis, number[]>();
+      for (const r of rs) {
+        const j = briefs.find((b) => b.id === r.briefId)!.input.jenis as Jenis;
+        per.set(j, [...(per.get(j) ?? []), r.rating]);
+      }
+      const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+      const cm = comments.filter((x) => x.cycleId === c.id);
+      const result: EvalResult = {
+        ...base, avg: rs.length ? mean(rs.map((r) => r.rating)) : null, dist,
+        byJenis: [...per.entries()].map(([jenis, xs]) => ({ jenis, avg: mean(xs), n: xs.length })),
+        good: shuffled(cm.filter((x) => x.kind === 'good').map((x) => x.body), c.id), improve: shuffled(cm.filter((x) => x.kind === 'improve').map((x) => x.body), c.id),
+      };
+      return { result };
+    }
+    if (what === 'form' && method === 'GET') {
+      const u = role('user');
+      if (!c || !c.invites.has(u.id)) throw new ApiError(404, 'not_found', 'Form evaluasi tidak ditemukan');
+      if (c.status !== 'open') throw conflict('bad_state', 'Siklus evaluasi ini sudah ditutup');
+      if (c.invites.get(u.id)) throw conflict('already_submitted', 'Anda sudah mengisi evaluasi ini. Terima kasih!');
+      const items: EvalFormItem[] = eligibleFor(u.id, c.periodStart, c.periodEnd)
+        .sort((a, b) => a.completedAt!.localeCompare(b.completedAt!))
+        .map((b) => ({ briefId: b.id, code: b.code, judul: b.input.judul, jenis: b.input.jenis as Jenis, completedAt: b.completedAt! }));
+      const form: EvalForm = { cycle: { ...cycleDto(c), invited: 0, submitted: 0, actions: [], fgdNotes: '' }, items };
+      return { form };
+    }
+    if (what === 'response' && method === 'POST') {
+      const u = role('user');
+      const input = responseSchema.parse(body);
+      if (!c || !c.invites.has(u.id)) throw new ApiError(404, 'not_found', 'Form evaluasi tidak ditemukan');
+      if (c.status !== 'open') throw conflict('bad_state', 'Siklus evaluasi ini sudah ditutup');
+      if (c.invites.get(u.id)) throw conflict('already_submitted', 'Anda sudah mengisi evaluasi ini');
+      const ids = new Set(eligibleFor(u.id, c.periodStart, c.periodEnd).map((b) => b.id));
+      const given = new Set(input.ratings.map((r) => r.briefId));
+      if (given.size !== input.ratings.length || given.size !== ids.size || [...given].some((id) => !ids.has(id))) {
+        throw new ApiError(400, 'bad_ratings', 'Beri rating untuk setiap konten pada form (tanpa duplikat)');
+      }
+      for (const r of input.ratings) responses.push({ cycleId: c.id, briefId: r.briefId, rating: r.rating });
+      if (input.good) comments.push({ cycleId: c.id, kind: 'good', body: input.good });
+      if (input.improve) comments.push({ cycleId: c.id, kind: 'improve', body: input.improve });
+      c.invites.set(u.id, true);
+      return { ok: true };
+    }
+    if (what === 'fgd' && method === 'PUT') {
+      role('leader');
+      if (!c) throw missing();
+      const { notes, at } = fgdSchema.parse(body);
+      c.fgdNotes = notes;
+      c.fgdAt = at;
+      return { ok: true };
+    }
+    if (what === 'actions' && method === 'POST') {
+      role('leader');
+      if (!c) throw missing();
+      c.actions.push({ id: nextActionId++, text: actionSchema.parse(body).text, done: false, createdAt: new Date().toISOString() });
+      return { ok: true };
+    }
+  }
+  m = /^\/api\/eval\/actions\/(\d+)$/.exec(path);
+  if (m && method === 'PATCH') {
+    role('leader');
+    const a = cycles.flatMap((c) => c.actions).find((x) => x.id === Number(m![1]));
+    if (!a) throw new ApiError(404, 'not_found', 'Tindak lanjut tidak ditemukan');
+    a.done = z.object({ done: z.boolean() }).parse(body).done;
+    return { ok: true };
+  }
+  return undefined;
 }
 
 function role(...allowed: Rec['role'][]): Rec {
@@ -904,7 +1162,7 @@ function briefRoute(method: string, path: string, body: unknown): unknown | unde
 }
 
 function route(method: string, path: string, body: unknown): unknown {
-  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body) ?? dailyRoute(method, path, body) ?? editingRoute(method, path, body);
+  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body) ?? dailyRoute(method, path, body) ?? editingRoute(method, path, body) ?? statsRoute(method, path) ?? evalRoute(method, path, body);
   if (handled !== undefined) return handled;
 
   if (method === 'POST' && path === '/api/auth/login') {

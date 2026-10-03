@@ -1,5 +1,6 @@
-import { SAMPLE_BRIEFS, SAMPLE_EDITING, SAMPLE_QUEUE, SAMPLE_REVIEW_FOOTAGE, addDays, briefInputSchema, mondayOf, nextWorkday, productionWeekFor, routeOf, sampleExecution, sampleWeekly, suggestDue, todayJakarta, type Status } from '@ccp/shared';
+import { SAMPLE_BRIEFS, SAMPLE_EDITING, SAMPLE_EVAL_COMMENTS, SAMPLE_FGD, isWeekly, sampleCycles, sampleHistory, SAMPLE_QUEUE, SAMPLE_REVIEW_FOOTAGE, addDays, briefInputSchema, mondayOf, nextWorkday, productionWeekFor, routeOf, sampleExecution, sampleWeekly, suggestDue, todayJakarta, type Status } from '@ccp/shared';
 import { insertBrief } from './briefs';
+import { createCycle } from './evaluation';
 import { syncSdm } from './weekly';
 import { loadConfig } from './config';
 import { migrate, openDb } from './db';
@@ -34,6 +35,9 @@ const demo =
         { email: 'dio@ccp.local', name: 'Dio', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
         { email: 'rara@ccp.local', name: 'Rara', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
         { email: 'arya@ccp.local', name: 'Arya Akbar Subakti', role: 'user', unit: 'Marketing', jabatan: 'Marketing Staff', password: DEMO_PASSWORD },
+        { email: 'sari@ccp.local', name: 'Sari Wulandari', role: 'user', unit: 'Sales', jabatan: 'Sales Executive', password: DEMO_PASSWORD },
+        { email: 'budi@ccp.local', name: 'Budi Santoso', role: 'user', unit: 'Operasional', jabatan: 'Staff Operasional', password: DEMO_PASSWORD },
+        { email: 'maya@ccp.local', name: 'Maya Putri', role: 'user', unit: 'Marketing', jabatan: 'Brand Executive', password: DEMO_PASSWORD },
       ];
 
 let created = 0;
@@ -191,6 +195,67 @@ if (config.env !== 'production') {
     }
   }
 }
-console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh, ${weeklyCreated} konten pekan Weekly Listing, ${execCreated} konten pekan berjalan, ${queueCreated} konten antrean editing.`);
+
+// Riwayat ±3 bulan (konten selesai, SLA, revisi) dan siklus evaluasi agar Dashboard, KPI, dan Blind Review berisi.
+let historyCreated = 0;
+if (config.env !== 'production') {
+  const history = sampleHistory();
+  const exists = (await db.one<{ n: number }>('SELECT COUNT(*)::int AS n FROM briefs WHERE judul = $1', [history[0]!.judul]))!.n;
+  const leaderRow = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'leader@ccp.local'");
+  if (exists === 0 && leaderRow) {
+    const ids = new Map<string, number>();
+    for (const u of ['sari', 'budi', 'maya', 'hardi', 'yofa', 'dio', 'rara']) ids.set(u, (await userIdOf(`${u}@ccp.local`))!);
+    const briefIds: number[] = [];
+    for (const x of history) {
+      const weekly = isWeekly(x.jenis);
+      const input = briefInputSchema.parse({
+        jenis: x.jenis, kategori: x.kategori, produk: x.produk, judul: x.judul, rasio: x.rasio, durasiDetik: x.durasiDetik,
+        linkDocs: 'https://docs.google.com/document/d/contoh', catatan: '',
+        attributes: weekly ? { talent: 'Rani', kostum: 'Casual', lokasi: 'Studio', lokasiDetail: '', properti: 'Box produk', desain: 'Tidak ada' } : null,
+      });
+      const requesterId = ids.get(x.requester)!;
+      const id = await insertBrief(db, {
+        requesterId, input, status: 'complete', actorId: requesterId, submittedAt: new Date(x.submittedAt), completedAt: new Date(x.completedAt), revisionCount: x.revisions,
+        ...(x.shoot ? { weekly: { weekStart: x.shoot.weekStart, bobot: 'gampang' as const, day: x.shoot.day, fuProperti: '', fuKostum: '', fuDesain: '' } } : {}),
+      });
+      briefIds.push(id);
+      const vgId = x.vg ? ids.get(x.vg)! : null;
+      const editorId = x.editor ? ids.get(x.editor)! : null;
+      await db.query('UPDATE briefs SET pic_id = $2, editor_id = $3, edit_due = $4, edit_scheduled_for = $4 WHERE id = $1', [id, editorId ?? vgId, editorId, x.edit?.due ?? null]);
+      if (x.shoot && vgId) {
+        await db.query('INSERT INTO footage_handoffs (brief_id, storage, drive_url, handed_by, handed_at) VALUES ($1, $2, $3, $4, $5)', [id, 'drive', `https://drive.google.com/drive/folders/riwayat-${id}`, vgId, x.shoot.handedAt]);
+      }
+      if (x.edit && editorId) {
+        await db.query('INSERT INTO deliverables (brief_id, version, url, note, submitted_by, submitted_at) VALUES ($1, 1, $2, $3, $4, $5)', [id, `https://drive.google.com/file/d/riwayat-${id}/view`, '', editorId, x.edit.deliveredAt]);
+      }
+      historyCreated++;
+    }
+    // Siklus evaluasi: yang lama ditutup dengan jawaban, yang berjalan terbuka (User contoh diundang).
+    const cycles = sampleCycles();
+    for (const [ci, c] of [...cycles].reverse().entries()) {
+      const cycleId = await createCycle(db, leaderRow.id, { name: c.name, periodStart: c.periodStart, periodEnd: c.periodEnd });
+      if (c.status === 'open') continue;
+      const inWindow = history.map((x, i) => ({ x, id: briefIds[i]! })).filter(({ x }) => x.completedAt.slice(0, 10) >= c.periodStart && x.completedAt.slice(0, 10) <= c.periodEnd);
+      const respondents = new Set<string>();
+      for (const { x, id } of inWindow) {
+        if (x.rating === null) continue;
+        await db.query('INSERT INTO eval_responses (cycle_id, brief_id, rating) VALUES ($1, $2, $3)', [cycleId, id, x.rating]);
+        respondents.add(x.requester);
+      }
+      for (const name of respondents) await db.query('UPDATE eval_invites SET submitted_at = now() WHERE cycle_id = $1 AND user_id = $2', [cycleId, ids.get(name)!]);
+      if (respondents.size >= 3) {
+        for (const kind of ['good', 'improve'] as const) {
+          for (let k = 0; k < 2; k++) await db.query('INSERT INTO eval_comments (cycle_id, kind, body) VALUES ($1, $2, $3)', [cycleId, kind, SAMPLE_EVAL_COMMENTS[kind][(ci + k) % SAMPLE_EVAL_COMMENTS[kind].length]]);
+        }
+      }
+      await db.query("UPDATE eval_cycles SET status = 'closed', closed_at = $2 WHERE id = $1", [cycleId, `${c.periodEnd}T09:00:00Z`]);
+      if (ci === cycles.length - 2) {
+        await db.query('UPDATE eval_cycles SET fgd_notes = $2, fgd_at = $3 WHERE id = $1', [cycleId, SAMPLE_FGD.notes, c.periodEnd]);
+        for (const a of SAMPLE_FGD.actions) await db.query('INSERT INTO eval_actions (cycle_id, text, done, created_by) VALUES ($1, $2, $3, $4)', [cycleId, a.text, a.done, leaderRow.id]);
+      }
+    }
+  }
+}
+console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh, ${weeklyCreated} konten pekan Weekly Listing, ${execCreated} konten pekan berjalan, ${queueCreated} konten antrean editing, ${historyCreated} konten riwayat.`);
 if (config.env !== 'production') console.log(`Login demo: <email>@ccp.local / ${DEMO_PASSWORD}`);
 await db.close();

@@ -12,6 +12,8 @@ import { authRoutes } from './routes/auth';
 import { briefRoutes } from './routes/briefs';
 import { dailyRoutes } from './routes/daily';
 import { editingRoutes } from './routes/editing';
+import { evaluationRoutes } from './routes/evaluation';
+import { statsRoutes } from './routes/stats';
 import { weeklyRoutes } from './routes/weekly';
 import { userRoutes } from './routes/users';
 
@@ -103,6 +105,8 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
   await app.register(weeklyRoutes, { prefix: '/api/weekly' });
   await app.register(dailyRoutes, { prefix: '/api/daily' });
   await app.register(editingRoutes, { prefix: '/api/editing' });
+  await app.register(statsRoutes, { prefix: '/api/stats' });
+  await app.register(evaluationRoutes, { prefix: '/api/eval' });
 
   return app;
 }

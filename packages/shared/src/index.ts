@@ -10,3 +10,5 @@ export * from './sample';
 export * from './weekly';
 export * from './daily';
 export * from './editing';
+export * from './stats';
+export * from './eval';

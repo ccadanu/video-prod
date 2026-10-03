@@ -90,3 +90,23 @@
   mask: url('../assets/weave.svg') 0 0 / 96px 96px repeat;
   pointer-events: none;
 }
+
+/*
+ * Token grafik (Dashboard/KPI). Palet kategorikal tervalidasi (CVD ΔE ≥ 8 antar-warna bersebelahan, urutan tetap).
+ * Slot dengan kontras < 3:1 di atas putih (aqua, kuning, magenta) selalu disertai label & legenda bernilai + tampilan tabel.
+ */
+:root {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
+  --viz-grid: #e3e8ed;
+  --viz-track: #e7ecf0;
+  --viz-seq-100: #cde2fb;
+  --viz-seq-250: #86b6ef;
+  --viz-seq-400: #3987e5;
+  --viz-seq-550: #1c5cab;
+  --viz-seq-700: #0d366b;
+}
