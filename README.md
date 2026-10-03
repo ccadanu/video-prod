@@ -54,5 +54,5 @@ bila web dilayani dari origin berbeda, dan buat admin awal dengan
 
 ## Status
 
-Fase 0 (fondasi) dan Fase 1 (Brief Order) selesai. Lihat `docs/ASSUMPTIONS.md` untuk asumsi yang perlu dikonfirmasi.
-Fase berikutnya: Weekly Listing → Daily Shooting (MVP).
+Fase 0 (fondasi), Fase 1 (Brief Order), dan Fase 2 (Weekly Listing) selesai. Lihat `docs/ASSUMPTIONS.md` untuk asumsi yang perlu dikonfirmasi.
+Fase berikutnya: Daily Shooting (MVP).

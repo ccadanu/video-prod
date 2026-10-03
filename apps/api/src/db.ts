@@ -30,9 +30,10 @@ export interface Db extends Queryable {
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 
-const OID = { INT8: 20, TIMESTAMPTZ: 1184 } as const;
+const OID = { INT8: 20, DATE: 1082, TIMESTAMPTZ: 1184 } as const;
 const toIso = (v: string) => new Date(v).toISOString();
 const toNumber = (v: string) => Number(v);
+const keep = (v: string) => v; // DATE tetap 'YYYY-MM-DD' (tanpa konversi zona waktu)
 
 function queryable(run: (sql: string, params: readonly unknown[]) => Promise<Row[]>): Queryable {
   const query = (async (sql: string, params: readonly unknown[] = []) => run(sql, params)) as Queryable['query'];
@@ -44,6 +45,7 @@ function openPg(url: string): Db {
   const types = {
     getTypeParser: (oid: number, format?: 'text' | 'binary') => {
       if (oid === OID.TIMESTAMPTZ) return toIso;
+      if (oid === OID.DATE) return keep;
       if (oid === OID.INT8) return toNumber;
       return pg.types.getTypeParser(oid, format as 'text');
     },
@@ -81,8 +83,8 @@ async function openPglite(location: string): Promise<Db> {
   if (location !== ':memory:') mkdirSync(location, { recursive: true });
   const db = new mod.PGlite(location === ':memory:' ? undefined : location);
   await db.waitReady;
-  // Parser kustom di PGlite berlaku per query (sama hasilnya dengan driver pg: timestamp = string ISO, bigint = number).
-  const opts = { parsers: { [mod.types.TIMESTAMPTZ]: toIso, [mod.types.INT8]: toNumber } };
+  // Parser kustom di PGlite berlaku per query (sama hasilnya dengan driver pg: timestamp = string ISO, date = 'YYYY-MM-DD', bigint = number).
+  const opts = { parsers: { [mod.types.TIMESTAMPTZ]: toIso, [mod.types.INT8]: toNumber, [mod.types.DATE]: keep } };
   const wrap = (q: { query: (sql: string, params?: unknown[], options?: typeof opts) => Promise<{ rows: unknown[] }> }) =>
     queryable(async (sql, params) => (await q.query(sql, params as unknown[], opts)).rows as Row[]);
   return {

@@ -22,6 +22,16 @@ Hal-hal yang diputuskan sementara saat membangun. Tandai yang sudah dikonfirmasi
 | 13 | Durasi wajib kecuali Photoshoot; rasio dipilih (9:16, 1:1, 16:9, 4:5) dan durasi dalam detik, terpisah dari rasio | Mockup menggabungkan "Rasio & Durasi" | Usulan |
 | 14 | Lokasi "Lainnya" meminta keterangan lokasi | PRD §5.3 | Usulan |
 | 15 | Bulk Order Mode (opsional di PRD) belum dibuat | PRD §5.3 | Ditunda |
+| 16 | Status `locking` dihapus; PRD §4.4 memakai satu status "Locking / Validasi SDM". Konten tetap `listing` sampai "Locking Disepakati", lalu `validasi_sdm` sampai "Ready to Execute" | Kamus status PRD | Disederhanakan |
+| 17 | Hari syuting dan bobot boleh diatur sejak sebelum Locking Disepakati (bagian sesi Locking, PRD §13). Kebutuhan SDM baru terbentuk setelah Locking Disepakati | PRD §6.2, §6.6, §13 | Perlu konfirmasi |
+| 18 | Setelah Locking, mengubah atribut, FU, atau hari wajib beralasan dan tercatat di riwayat konten (dilihat User). Mengubah bobot tidak wajib beralasan | PRD §6.8 | Usulan |
+| 19 | Kapasitas lewat batas hanya menampilkan peringatan "⚠ over"; tidak memblokir Ready to Execute | Mockup v6 | Perlu konfirmasi |
+| 20 | Konten susulan (disubmit setelah Locking) tampil sebagai Listing dan perlu "Locking Disepakati" lagi. Bila membawa kebutuhan SDM baru, Ready seluruh pekan dibuka kembali | Belum dibahas PRD | Usulan |
+| 21 | Item SDM unik per (hari, jenis, nama) tanpa membedakan huruf besar/kecil: talent yang sama di hari yang sama = satu item. Leader menandai Ready/Tidak Ready tanpa catatan. "Tidak Ready" setelah pekan Ready membatalkan Ready | PRD §6.4 | Usulan |
+| 22 | Item tindak lanjut Leader (properti dibeli, aset desain diorder, kostum khusus) ditentukan VG dengan mengisi nama item; talent dan lokasi luar selalu menjadi item; lokasi Kantor otomatis Ready | PRD §6.4, BPM | Usulan |
+| 23 | Shotlist dan Skrip berupa link Google Docs, bisa diunggah VG mana pun (PIC Hardi/Yofa tidak dikunci) setelah semua SDM hari itu Ready. Konfirmasi ulang talent H-1 oleh Leader tanpa tenggat otomatis | PRD §6.5 | Usulan |
+| 24 | User hanya melihat konten miliknya di Weekly Listing, tanpa kapasitas, SDM, atau dokumen harian | PRD §2 "User = read-only" | Perlu konfirmasi |
+| 25 | "Tunda ke pekan depan": hari dikosongkan dan SDM disinkronkan. "Kembalikan ke User (Backlog)" hanya sebelum Locking, boleh oleh VG atau Leader | PRD §6.8 | Usulan |
 
 ## Teknis
 

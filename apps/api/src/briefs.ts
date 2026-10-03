@@ -1,6 +1,8 @@
 import {
   BRIEF_FILTERS,
   STATUSES,
+  isWeekly,
+  productionWeekFor,
   slaTargetFor,
   todayJakarta,
   type BriefAttributes,
@@ -82,6 +84,8 @@ export interface InsertBrief {
   completedAt?: Date | null;
   revisionCount?: number;
   reason?: string;
+  /** Hanya untuk seed/uji: mengisi data Weekly Listing langsung. */
+  weekly?: { weekStart: string; bobot: 'gampang' | 'susah'; day: number | null; fuProperti: string; fuKostum: string; fuDesain: string };
 }
 
 export async function insertBrief(db: Db, p: InsertBrief): Promise<number> {
@@ -91,17 +95,24 @@ export async function insertBrief(db: Db, p: InsertBrief): Promise<number> {
     const { input } = p;
     const row = await tx.one<{ id: number }>(
       `INSERT INTO briefs (code, requester_id, jenis, kategori, produk, judul, rasio, durasi_detik, link_docs, catatan,
-         status, revision_count, submitted_at, sla_target_at, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         status, revision_count, submitted_at, sla_target_at, completed_at, week_start, bobot, shoot_day)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING id`,
       [
         await nextCode(tx, submitted), p.requesterId, input.jenis, input.kategori, input.produk, input.judul, input.rasio,
         input.durasiDetik, input.linkDocs, input.catatan, p.status, p.revisionCount ?? 0, submittedIso,
         slaTargetFor(input.jenis, submittedIso), p.completedAt?.toISOString() ?? null,
+        isWeekly(input.jenis) ? (p.weekly?.weekStart ?? productionWeekFor(todayJakarta(submitted))) : null,
+        p.weekly?.bobot ?? 'gampang', p.weekly?.day ?? null,
       ],
     );
     const id = row!.id;
     await writeAttributes(tx, id, input.attributes);
+    if (p.weekly && input.attributes) {
+      await tx.query('UPDATE brief_attributes SET fu_properti = $2, fu_kostum = $3, fu_desain = $4 WHERE brief_id = $1', [
+        id, p.weekly.fuProperti, p.weekly.fuKostum, p.weekly.fuDesain,
+      ]);
+    }
     await addEvent(tx, id, null, p.status, p.actorId, p.reason ?? '');
     return id;
   });
@@ -200,7 +211,10 @@ export async function applyTransition(
     if (to === 'complete') sets.push(`completed_at = ${bind(now)}`);
     if (to === 'revisi') sets.push(`revision_count = ${bind(b.revision_count + 1)}`);
     // Kirim ulang dari Backlog: jam SLA dimulai lagi.
-    if (b.status === 'backlog') sets.push(`submitted_at = ${bind(now)}`, `sla_target_at = ${bind(slaTargetFor(b.jenis, now))}`);
+    if (b.status === 'backlog') {
+      sets.push(`submitted_at = ${bind(now)}`, `sla_target_at = ${bind(slaTargetFor(b.jenis, now))}`);
+      if (isWeekly(b.jenis)) sets.push(`week_start = ${bind(productionWeekFor(todayJakarta(new Date(now))))}`, 'shoot_day = NULL');
+    }
     await tx.query(`UPDATE briefs SET ${sets.join(', ')} WHERE id = ${bind(b.id)}`, params);
     await addEvent(tx, b.id, b.status, to, actorId, reason);
     await audit(tx, actorId, 'brief.transition', 'brief', b.id, { from: b.status, to, reason });

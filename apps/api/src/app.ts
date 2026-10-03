@@ -6,9 +6,11 @@ import { ZodError } from 'zod';
 import type { Role } from '@ccp/shared';
 import type { Config } from './config';
 import type { Db } from './db';
+import { HttpError } from './errors';
 import { COOKIE_NAME, userForToken, type UserRow } from './sessions';
 import { authRoutes } from './routes/auth';
 import { briefRoutes } from './routes/briefs';
+import { weeklyRoutes } from './routes/weekly';
 import { userRoutes } from './routes/users';
 
 declare module 'fastify' {
@@ -24,15 +26,7 @@ declare module 'fastify' {
   }
 }
 
-export class HttpError extends Error {
-  constructor(
-    public statusCode: number,
-    public code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { HttpError };
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -103,6 +97,7 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(userRoutes, { prefix: '/api/users' });
   await app.register(briefRoutes, { prefix: '/api/briefs' });
+  await app.register(weeklyRoutes, { prefix: '/api/weekly' });
 
   return app;
 }

@@ -1,4 +1,4 @@
-import { SAMPLE_BRIEFS, briefInputSchema } from '@ccp/shared';
+import { SAMPLE_BRIEFS, addDays, briefInputSchema, productionWeekFor, sampleWeekly, todayJakarta } from '@ccp/shared';
 import { insertBrief } from './briefs';
 import { loadConfig } from './config';
 import { migrate, openDb } from './db';
@@ -53,7 +53,8 @@ if (config.env !== 'production') {
   const requester = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'arya@ccp.local'");
   const existing = (await db.one<{ n: number }>('SELECT COUNT(*)::int AS n FROM briefs'))!.n;
   if (requester && existing === 0) {
-    for (const s of [...SAMPLE_BRIEFS].reverse()) {
+    const prevWeek = addDays(productionWeekFor(todayJakarta()), -7);
+    for (const [idx, s] of [...SAMPLE_BRIEFS].reverse().entries()) {
       const weekly = s.jenis === 'shooting_only' || s.jenis === 'shooting_edit' || s.jenis === 'photoshoot';
       const input = briefInputSchema.parse({
         jenis: s.jenis, kategori: s.kategori, produk: s.produk, judul: s.judul, rasio: s.rasio, durasiDetik: s.durasiDetik,
@@ -66,11 +67,37 @@ if (config.env !== 'production') {
         requesterId: requester.id, input, status: s.status, actorId: requester.id, submittedAt,
         revisionCount: s.revisionCount ?? 0, reason: s.reason ?? '',
         completedAt: s.status === 'complete' ? new Date(submittedAt.getTime() + day) : null,
+        // Weekly yang sudah melewati tahap perencanaan berasal dari pekan sebelumnya dan punya hari syuting.
+        ...(weekly && !['listing', 'backlog', 'pending_review'].includes(s.status)
+          ? { weekly: { weekStart: prevWeek, bobot: 'gampang' as const, day: idx % 5, fuProperti: '', fuKostum: '', fuDesain: '' } }
+          : {}),
       });
       briefsCreated++;
     }
   }
 }
-console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh.`);
+
+// Satu pekan Weekly Listing berisi konten contoh (belum dikunci) agar alur Locking → Ready bisa dicoba.
+let weeklyCreated = 0;
+if (config.env !== 'production') {
+  const requester = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'arya@ccp.local'");
+  const week = productionWeekFor(todayJakarta());
+  const existing = (await db.one<{ n: number }>('SELECT COUNT(*)::int AS n FROM briefs WHERE judul = $1', [sampleWeekly()[0]!.judul]))!.n;
+  if (requester && existing === 0) {
+    for (const s of sampleWeekly()) {
+      const input = briefInputSchema.parse({
+        jenis: s.jenis, kategori: s.kategori, produk: s.produk, judul: s.judul, rasio: s.rasio, durasiDetik: s.durasiDetik,
+        linkDocs: 'https://docs.google.com/document/d/contoh', catatan: '',
+        attributes: { talent: s.talent, kostum: s.kostum, lokasi: s.lokasi, lokasiDetail: '', properti: s.properti, desain: s.desain },
+      });
+      await insertBrief(db, {
+        requesterId: requester.id, input, status: 'listing', actorId: requester.id,
+        weekly: { weekStart: week, bobot: s.bobot, day: s.day, fuProperti: s.fuProperti, fuKostum: s.fuKostum, fuDesain: s.fuDesain },
+      });
+      weeklyCreated++;
+    }
+  }
+}
+console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh, ${weeklyCreated} konten pekan Weekly Listing.`);
 if (config.env !== 'production') console.log(`Login demo: <email>@ccp.local / ${DEMO_PASSWORD}`);
 await db.close();

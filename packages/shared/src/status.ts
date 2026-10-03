@@ -7,7 +7,6 @@ export const STATUSES = [
   'pending_review',
   'backlog',
   'listing',
-  'locking',
   'validasi_sdm',
   'ready',
   'syuting',
@@ -28,8 +27,7 @@ export const STATUS_META: Record<Status, { label: string; tone: Tone }> = {
   pending_review: { label: 'Pending Review', tone: 'amber' },
   backlog: { label: 'Backlog', tone: 'slate' },
   listing: { label: 'Listing (To Do)', tone: 'sky' },
-  locking: { label: 'Locking', tone: 'blue' },
-  validasi_sdm: { label: 'Validasi SDM', tone: 'blue' },
+  validasi_sdm: { label: 'Locking / Validasi SDM', tone: 'blue' },
   ready: { label: 'Ready to Execute', tone: 'green' },
   syuting: { label: 'Syuting', tone: 'amber' },
   footage_siap: { label: 'Footage Siap', tone: 'sky' },
@@ -63,12 +61,13 @@ export const TRANSITIONS: readonly Transition[] = [
   { from: 'backlog', to: 'pending_review', actors: ['user'], jalur: ['daily'] },
   { from: 'backlog', to: 'listing', actors: ['user'], jalur: WEEKLY },
 
-  // Pra-produksi (Weekly Listing)
-  { from: 'listing', to: 'locking', actors: ['videografer', 'system'], jalur: WEEKLY },
-  { from: 'locking', to: 'validasi_sdm', actors: ['videografer'], jalur: WEEKLY },
+  // Pra-produksi (Weekly Listing). "Locking / Validasi SDM" adalah satu status (PRD §4.4):
+  // konten tetap `listing` sampai "Locking Disepakati", lalu `validasi_sdm` sampai "Ready to Execute".
+  { from: 'listing', to: 'validasi_sdm', actors: ['videografer'], jalur: WEEKLY },
   { from: 'validasi_sdm', to: 'ready', actors: ['videografer', 'system'], jalur: WEEKLY },
+  // Kesiapan dibatalkan bila SDM/jadwal berubah setelah Ready (mis. talent diganti).
+  { from: 'ready', to: 'validasi_sdm', actors: ['videografer', 'leader', 'system'], jalur: WEEKLY, reason: true },
   // Tunda ke pekan depan: kembali ke Weekly Listing (PRD §6.8, §7.6)
-  { from: 'locking', to: 'listing', actors: ['videografer'], jalur: WEEKLY, reason: true },
   { from: 'validasi_sdm', to: 'listing', actors: ['videografer'], jalur: WEEKLY, reason: true },
   { from: 'ready', to: 'listing', actors: ['videografer'], jalur: WEEKLY, reason: true },
 

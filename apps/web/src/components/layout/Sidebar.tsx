@@ -33,7 +33,7 @@ function Soon({ navKey }: { navKey: string }) {
   );
 }
 
-function Group({ item }: { item: NavItem }) {
+function Group({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
   const { pathname } = useLocation();
   const active = pathname.startsWith(item.path);
   const [open, setOpen] = useState(true);
@@ -48,7 +48,7 @@ function Group({ item }: { item: NavItem }) {
       {open && (
         <div className="ml-[18px] mt-0.5 flex flex-col gap-0.5 border-l border-white/10 pl-2">
           {item.children?.map((c) => (
-            <NavLink key={c.key} to={c.path} className={({ isActive }) => cx(ITEM, 'py-1.5 text-[12.5px]', isActive && ACTIVE)}>
+            <NavLink key={c.key} to={c.path} onClick={onNavigate} className={({ isActive }) => cx(ITEM, 'py-1.5 text-[12.5px]', isActive && ACTIVE)}>
               {c.label}
               <Soon navKey={c.key} />
             </NavLink>
@@ -59,13 +59,21 @@ function Group({ item }: { item: NavItem }) {
   );
 }
 
-export function Sidebar() {
+/** Layar lebar: kolom tetap. Layar sempit (<768px): menu geser yang dibuka dari tombol menu di AppShell. */
+export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
   const { user, logout } = useAuth();
   if (!user) return null;
   const items = navFor(user.role);
 
   return (
-    <aside className="relative flex h-full w-[232px] flex-none flex-col overflow-hidden bg-navy-900 px-3.5 py-[18px] text-[#c7d6e2]">
+    <aside
+      id="app-sidebar"
+      className={cx(
+        'relative z-40 flex h-full w-[232px] flex-none flex-col overflow-hidden bg-navy-900 px-3.5 py-[18px] text-[#c7d6e2]',
+        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:shadow-2xl max-md:transition-transform max-md:duration-200',
+        open ? 'max-md:translate-x-0' : 'max-md:invisible max-md:-translate-x-full',
+      )}
+    >
       <div className="flex items-center gap-2.5 px-2 pb-5 pt-1.5">
         <img src={logoMark} alt="" width={26} height={36} className="h-9 w-auto" />
         <div className="leading-tight">
@@ -77,9 +85,9 @@ export function Sidebar() {
       <nav aria-label="Menu utama" className="relative z-10 flex flex-col gap-0.5">
         {items.map((item) =>
           item.children ? (
-            item.children.length > 0 && <Group key={item.key} item={item} />
+            item.children.length > 0 && <Group key={item.key} item={item} onNavigate={onNavigate} />
           ) : (
-            <NavLink key={item.key} to={item.path} className={({ isActive }) => cx(ITEM, isActive && ACTIVE)}>
+            <NavLink key={item.key} to={item.path} onClick={onNavigate} className={({ isActive }) => cx(ITEM, isActive && ACTIVE)}>
               {(() => { const Icon = ICON[item.key]; return <Icon size={16} />; })()}
               {item.label}
               <Soon navKey={item.key} />
@@ -95,7 +103,7 @@ export function Sidebar() {
       </div>
 
       <div className="relative z-10 -mx-3.5 mt-auto border-t border-white/10 bg-navy-900 px-3.5 pt-3">
-        <NavLink to="/account" className={({ isActive }) => cx(ITEM, 'items-start', isActive && ACTIVE)}>
+        <NavLink to="/account" onClick={onNavigate} className={({ isActive }) => cx(ITEM, 'items-start', isActive && ACTIVE)}>
           <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-brand-500 text-xs font-bold text-white">{user.name[0]}</span>
           <span className="min-w-0 leading-tight">
             <span className="block truncate text-[12.5px] font-semibold text-white">{user.name}</span>

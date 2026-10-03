@@ -1,6 +1,28 @@
 import {
   BRIEF_FILTERS,
+  DAY_CAPACITY,
+  DAY_NAMES,
+  HIDDEN_FROM_WEEK,
+  PLANNING_STATUSES,
   SAMPLE_BRIEFS,
+  addDays,
+  contentPatchSchema,
+  dayDocSchema,
+  isWeekStart,
+  lockingDayOf,
+  productionWeekFor,
+  reasonSchema,
+  sampleWeekly,
+  sdmKey,
+  sdmNeeds,
+  slotsUsed,
+  weekLabel,
+  weekProgress,
+  type SdmItem,
+  type SdmType,
+  type DayInfo,
+  type WeekDto,
+  type WeeklyContent,
   STATUSES,
   briefInputSchema,
   canEditBrief,
@@ -100,6 +122,10 @@ interface BriefRec {
   revisionCount: number;
   submittedAt: string;
   completedAt: string | null;
+  weekStart: string | null;
+  bobot: 'gampang' | 'susah';
+  day: number | null;
+  fu: { properti: string; kostum: string; desain: string };
   history: { from: Status | null; to: Status; actorId: number | null; reason: string; at: string }[];
 }
 
@@ -116,13 +142,15 @@ function demoCode(at: Date): string {
 function pushBrief(requesterId: number, input: BriefInput, status: Status, at: Date, extra: Partial<BriefRec> = {}, reason = ''): BriefRec {
   const rec: BriefRec = {
     id: nextBriefId++, code: demoCode(at), requesterId, input, status, revisionCount: 0, submittedAt: at.toISOString(), completedAt: null,
+    weekStart: isWeekly(input.jenis) ? productionWeekFor(todayJakarta(at)) : null, bobot: 'gampang', day: null,
+    fu: { properti: '', kostum: '', desain: '' },
     history: [{ from: null, to: status, actorId: requesterId, reason, at: at.toISOString() }], ...extra,
   };
   briefs.push(rec);
   return rec;
 }
 
-for (const s of [...SAMPLE_BRIEFS].reverse()) {
+for (const [idx, s] of [...SAMPLE_BRIEFS].reverse().entries()) {
   const weekly = isWeekly(s.jenis);
   const input = briefInputSchema.parse({
     jenis: s.jenis, kategori: s.kategori, produk: s.produk, judul: s.judul, rasio: s.rasio, durasiDetik: s.durasiDetik,
@@ -133,10 +161,289 @@ for (const s of [...SAMPLE_BRIEFS].reverse()) {
   pushBrief(6, input, s.status, at, {
     revisionCount: s.revisionCount ?? 0,
     completedAt: s.status === 'complete' ? new Date(at.getTime() + DAY).toISOString() : null,
+    // Weekly yang sudah melewati tahap perencanaan berasal dari pekan sebelumnya dan punya hari syuting.
+    ...(weekly && !['listing', 'backlog', 'pending_review'].includes(s.status) ? { weekStart: addDays(productionWeekFor(todayJakarta()), -7), day: idx % 5 } : {}),
   }, s.reason ?? '');
 }
 
+
 const nameOf = (id: number | null) => (id === null ? null : (users.find((u) => u.id === id)?.name ?? null));
+
+// Satu pekan contoh Weekly Listing (belum dikunci) agar alur Locking → Ready bisa dicoba.
+const SAMPLE_WEEK = productionWeekFor(todayJakarta());
+for (const w of sampleWeekly()) {
+  const input = briefInputSchema.parse({
+    jenis: w.jenis, kategori: w.kategori, produk: w.produk, judul: w.judul, rasio: w.rasio, durasiDetik: w.durasiDetik,
+    linkDocs: 'https://docs.google.com/document/d/contoh', catatan: '',
+    attributes: { talent: w.talent, kostum: w.kostum, lokasi: w.lokasi, lokasiDetail: '', properti: w.properti, desain: w.desain },
+  });
+  pushBrief(6, input, 'listing', new Date(), {
+    weekStart: SAMPLE_WEEK, bobot: w.bobot, day: w.day, fu: { properti: w.fuProperti, kostum: w.fuKostum, desain: w.fuDesain },
+  });
+}
+
+// ───────────── Weekly Listing (memori) ─────────────
+
+interface WeekRec { lockedAt: string | null; lockedBy: number | null; readyAt: string | null; readyBy: number | null }
+interface SdmRec { id: number; week: string; day: number; type: SdmType; name: string; ready: boolean; readyBy: number | null; readyAt: string | null }
+interface DocRec {
+  shotlistUrl: string | null; shotlistBy: number | null; skripUrl: string | null; skripBy: number | null;
+  talentAt: string | null; talentBy: number | null;
+}
+const weeks = new Map<string, WeekRec>();
+const sdmItems: SdmRec[] = [];
+const docs = new Map<string, DocRec>();
+let nextSdmId = 1;
+
+const inWeek = (week: string) => briefs.filter((b) => b.weekStart === week && !HIDDEN_FROM_WEEK.includes(b.status));
+const sdmSrc = (b: BriefRec) => ({
+  talent: b.input.attributes?.talent ?? '', lokasi: b.input.attributes?.lokasi ?? '', lokasiDetail: b.input.attributes?.lokasiDetail ?? '',
+  fuProperti: b.fu.properti, fuKostum: b.fu.kostum, fuDesain: b.fu.desain,
+});
+const weekRec = (week: string): WeekRec => {
+  let w = weeks.get(week);
+  if (!w) weeks.set(week, (w = { lockedAt: null, lockedBy: null, readyAt: null, readyBy: null }));
+  return w;
+};
+const progressOf = (week: string) =>
+  weekProgress({
+    lockedAt: weeks.get(week)?.lockedAt ?? null, readyAt: weeks.get(week)?.readyAt ?? null,
+    contents: inWeek(week).map((b) => ({ status: b.status, day: b.day })),
+    items: sdmItems.filter((i) => i.week === week),
+  });
+const evt = (b: BriefRec, to: Status, actorId: number, reason: string) => {
+  b.history.push({ from: b.status, to, actorId, reason, at: new Date().toISOString() });
+  b.status = to;
+};
+
+function syncSdm(week: string): void {
+  const desired = new Map<string, { day: number; type: SdmType; name: string }>();
+  for (const b of inWeek(week)) {
+    if (b.day === null || b.status === 'listing') continue;
+    for (const n of sdmNeeds(sdmSrc(b))) desired.set(sdmKey(b.day, n), { day: b.day, type: n.type, name: n.name });
+  }
+  const have = new Set<string>();
+  for (let i = sdmItems.length - 1; i >= 0; i--) {
+    const it = sdmItems[i]!;
+    if (it.week !== week) continue;
+    const k = sdmKey(it.day, it);
+    if (desired.has(k)) have.add(k);
+    else sdmItems.splice(i, 1);
+  }
+  for (const [k, d] of desired) {
+    if (!have.has(k)) sdmItems.push({ id: nextSdmId++, week, ...d, ready: false, readyBy: null, readyAt: null });
+  }
+}
+
+function reevaluate(week: string, actorId: number, why: string): void {
+  const w = weeks.get(week);
+  if (!w?.readyAt || progressOf(week).lockedGateOk) return;
+  w.readyAt = null;
+  w.readyBy = null;
+  for (const b of briefs.filter((x) => x.weekStart === week && x.status === 'ready')) evt(b, 'validasi_sdm', actorId, `Ready dibatalkan: ${why}`);
+}
+
+function weekDto(week: string, viewer: Rec): WeekDto {
+  const isUser = viewer.role === 'user';
+  const all = inWeek(week);
+  const items = sdmItems.filter((i) => i.week === week);
+  const unready = new Set(items.filter((i) => !i.ready).map((i) => sdmKey(i.day, i)));
+  const counts = new Map<string, number>();
+  for (const b of all) {
+    if (b.day === null || b.status === 'listing') continue;
+    for (const n of sdmNeeds(sdmSrc(b))) counts.set(sdmKey(b.day, n), (counts.get(sdmKey(b.day, n)) ?? 0) + 1);
+  }
+  const visible = isUser ? all.filter((b) => b.requesterId === viewer.id) : all;
+  const contents: WeeklyContent[] = visible.map((b) => {
+    const a = b.input.attributes!;
+    return {
+      id: b.id, code: b.code, judul: b.input.judul, produk: b.input.produk, kategori: b.input.kategori, jenis: b.input.jenis, status: b.status,
+      linkDocs: b.input.linkDocs, requesterName: nameOf(b.requesterId) ?? '—', talent: a.talent, kostum: a.kostum, lokasi: a.lokasi,
+      lokasiDetail: a.lokasiDetail, properti: a.properti, desain: a.desain, fuProperti: b.fu.properti, fuKostum: b.fu.kostum, fuDesain: b.fu.desain,
+      bobot: b.bobot, day: b.day,
+      sdmIssue: b.day !== null && b.status !== 'listing' && sdmNeeds(sdmSrc(b)).some((n) => unready.has(sdmKey(b.day!, n))),
+    };
+  });
+  const days: DayInfo[] = DAY_NAMES.map((_, day) => {
+    const dayItems = items.filter((i) => i.day === day);
+    const d = docs.get(`${week}#${day}`);
+    const ready = dayItems.filter((i) => i.ready).length;
+    const lockedOnDay = all.some((b) => b.day === day && b.status !== 'listing');
+    return {
+      day, date: addDays(week, day), count: visible.filter((b) => b.day === day).length,
+      slots: isUser ? null : slotsUsed(all.filter((b) => b.day === day)), capacity: isUser ? null : DAY_CAPACITY[day]!,
+      sdmReady: isUser ? 0 : ready, sdmTotal: isUser ? 0 : dayItems.length, docsOpen: !isUser && lockedOnDay && ready === dayItems.length,
+      shotlistUrl: isUser ? null : (d?.shotlistUrl ?? null), shotlistByName: isUser ? null : nameOf(d?.shotlistBy ?? null),
+      skripUrl: isUser ? null : (d?.skripUrl ?? null), skripByName: isUser ? null : nameOf(d?.skripBy ?? null),
+      talentReconfirmedAt: isUser ? null : (d?.talentAt ?? null), talentReconfirmedByName: isUser ? null : nameOf(d?.talentBy ?? null),
+    };
+  });
+  const sdm: SdmItem[] = isUser
+    ? []
+    : items.map((i) => ({ id: i.id, day: i.day, type: i.type, name: i.name, ready: i.ready, readyByName: nameOf(i.readyBy), readyAt: i.readyAt, contentCount: counts.get(sdmKey(i.day, i)) ?? 0 }));
+  const w = weeks.get(week);
+  return {
+    weekStart: week, label: weekLabel(week), lockingDay: lockingDayOf(week),
+    lockedAt: w?.lockedAt ?? null, lockedByName: nameOf(w?.lockedBy ?? null), readyAt: w?.readyAt ?? null, readyByName: nameOf(w?.readyBy ?? null),
+    progress: progressOf(week), contents, days, sdm,
+  };
+}
+
+function role(...allowed: Rec['role'][]): Rec {
+  const u = needAuth();
+  if (!allowed.includes(u.role)) throw new ApiError(403, 'forbidden', 'Anda tidak memiliki akses');
+  return u;
+}
+const conflict = (code: string, msg: string) => new ApiError(409, code, msg);
+function contentOf(rawId: string): BriefRec {
+  const b = briefs.find((x) => x.id === Number(rawId));
+  if (!b || !b.weekStart) throw new ApiError(404, 'not_found', 'Konten Weekly tidak ditemukan');
+  return b;
+}
+const planning = (b: BriefRec) => {
+  if (!PLANNING_STATUSES.includes(b.status)) throw conflict('not_adjustable', 'Konten ini sudah masuk produksi, ubah lewat Daily Shooting');
+};
+const dayLabel = (d: number | null) => (d === null ? 'belum dijadwal' : DAY_NAMES[d]!);
+
+function weeklyRoute(method: string, path: string, body: unknown): unknown | undefined {
+  const m = /^\/api\/weekly\/(.+)$/.exec(path);
+  if (!m) return undefined;
+  const parts = m[1]!.split('/');
+  const wk = (raw: string) => {
+    if (!isWeekStart(raw)) throw new ApiError(400, 'bad_week', 'Pekan harus berupa tanggal Senin (YYYY-MM-DD)');
+    return raw;
+  };
+
+  if (parts.length === 1 && method === 'GET') {
+    const u = role('user', 'leader', 'videografer', 'admin');
+    return { week: weekDto(wk(parts[0]!), u) };
+  }
+
+  if (parts[0] === 'contents' && parts[1]) {
+    const b = contentOf(parts[1]);
+    const week = b.weekStart!;
+    if (parts.length === 2 && method === 'PATCH') {
+      const u = role('videografer');
+      const patch = contentPatchSchema.parse(body);
+      planning(b);
+      const a = { ...b.input.attributes! };
+      const lokasi = patch.lokasi ?? a.lokasi;
+      const detail = lokasi === 'Lainnya' ? (patch.lokasiDetail ?? a.lokasiDetail) : '';
+      if (lokasi === 'Lainnya' && !detail) throw new ApiError(400, 'validation', 'lokasiDetail: Sebutkan lokasinya');
+      const next = { ...a, talent: patch.talent ?? a.talent, kostum: patch.kostum ?? a.kostum, lokasi, lokasiDetail: detail, properti: patch.properti ?? a.properti, desain: patch.desain ?? a.desain };
+      const nextFu = { properti: patch.fuProperti ?? b.fu.properti, kostum: patch.fuKostum ?? b.fu.kostum, desain: patch.fuDesain ?? b.fu.desain };
+      const attrChanged = (Object.keys(next) as (keyof typeof next)[]).some((k) => next[k] !== a[k]) || (Object.keys(nextFu) as (keyof typeof nextFu)[]).some((k) => nextFu[k] !== b.fu[k]);
+      const dayChanged = patch.day !== undefined && patch.day !== b.day;
+      const bobotChanged = patch.bobot !== undefined && patch.bobot !== b.bobot;
+      if (!attrChanged && !dayChanged && !bobotChanged) return { week: weekDto(week, u) };
+      const locked = b.status !== 'listing';
+      if (locked && (attrChanged || dayChanged) && !patch.reason) throw new ApiError(400, 'reason_required', 'Alasan wajib diisi untuk penyesuaian setelah Locking');
+      const summary = [dayChanged ? `hari: ${dayLabel(b.day)} → ${dayLabel(patch.day ?? null)}` : '', attrChanged ? 'atribut diperbarui' : '', bobotChanged ? `bobot: ${b.bobot} → ${patch.bobot}` : ''].filter(Boolean).join('; ');
+      b.input = { ...b.input, attributes: next };
+      b.fu = nextFu;
+      if (patch.bobot) b.bobot = patch.bobot;
+      if (patch.day !== undefined) b.day = patch.day;
+      if (locked) {
+        syncSdm(week);
+        reevaluate(week, u.id, patch.reason || 'penyesuaian jadwal/atribut');
+        if (patch.reason) evt(b, b.status, u.id, `Penyesuaian (${summary}). Alasan: ${patch.reason}`);
+      }
+      return { week: weekDto(week, u) };
+    }
+    if (parts.length === 3 && parts[2] === 'postpone' && method === 'POST') {
+      const u = role('videografer');
+      const { reason } = reasonSchema.parse(body);
+      planning(b);
+      const was = b.status;
+      b.weekStart = addDays(week, 7);
+      b.day = null;
+      evt(b, 'listing', u.id, `Ditunda ke ${weekLabel(b.weekStart)}. Alasan: ${reason}`);
+      if (was !== 'listing') {
+        syncSdm(week);
+        reevaluate(week, u.id, `konten ${b.code} ditunda`);
+      }
+      return { week: weekDto(week, u) };
+    }
+    if (parts.length === 3 && parts[2] === 'return' && method === 'POST') {
+      const u = role('videografer', 'leader');
+      const { reason } = reasonSchema.parse(body);
+      if (b.status !== 'listing') throw conflict('not_returnable', 'Konten yang sudah dikunci tidak bisa dikembalikan. Gunakan “Tunda ke pekan depan”.');
+      b.day = null;
+      evt(b, 'backlog', u.id, reason);
+      return { week: weekDto(week, u) };
+    }
+  }
+
+  if (parts[0] === 'sdm' && parts[1] && method === 'POST') {
+    const u = role('leader');
+    const { ready } = z.object({ ready: z.boolean() }).parse(body);
+    const it = sdmItems.find((i) => i.id === Number(parts[1]));
+    if (!it) throw new ApiError(404, 'not_found', 'Item SDM tidak ditemukan');
+    it.ready = ready;
+    it.readyBy = ready ? u.id : null;
+    it.readyAt = ready ? new Date().toISOString() : null;
+    if (!ready) reevaluate(it.week, u.id, 'ada item SDM yang ditandai Tidak Ready');
+    return { week: weekDto(it.week, u) };
+  }
+
+  const week = wk(parts[0]!);
+  if (parts.length === 2 && parts[1] === 'lock' && method === 'POST') {
+    const u = role('videografer');
+    const pending = inWeek(week).filter((b) => b.status === 'listing');
+    if (pending.length === 0) throw conflict('nothing_to_lock', 'Tidak ada konten yang perlu dikunci');
+    for (const b of pending) evt(b, 'validasi_sdm', u.id, '');
+    const w = weekRec(week);
+    w.lockedAt ??= new Date().toISOString();
+    w.lockedBy ??= u.id;
+    syncSdm(week);
+    reevaluate(week, u.id, 'ada konten susulan yang baru dikunci');
+    return { week: weekDto(week, u) };
+  }
+  if (parts.length === 2 && parts[1] === 'ready' && method === 'POST') {
+    const u = role('videografer');
+    const p = progressOf(week);
+    if (!p.canMarkReady) {
+      throw conflict(
+        'not_ready',
+        p.pendingLock > 0 ? 'Masih ada konten yang belum dikunci (Locking Disepakati).' : p.unscheduled > 0 ? `Masih ada ${p.unscheduled} konten tanpa hari syuting.` : !p.steps[2] ? 'Masih ada SDM yang belum Ready.' : 'Pekan ini belum bisa ditandai Ready.',
+      );
+    }
+    for (const b of inWeek(week).filter((x) => x.status === 'validasi_sdm')) evt(b, 'ready', u.id, '');
+    const w = weekRec(week);
+    w.readyAt = new Date().toISOString();
+    w.readyBy = u.id;
+    return { week: weekDto(week, u) };
+  }
+  if (parts.length === 4 && parts[1] === 'days') {
+    const day = Number(parts[2]);
+    if (!Number.isInteger(day) || day < 0 || day > 4) throw new ApiError(400, 'bad_day', 'Hari harus 0 (Senin) sampai 4 (Jumat)');
+    if (parts[3] === 'docs' && method === 'PUT') {
+      const u = role('videografer');
+      const { kind, url } = dayDocSchema.parse(body);
+      const lockedOnDay = inWeek(week).some((b) => b.day === day && b.status !== 'listing');
+      if (!lockedOnDay || sdmItems.some((i) => i.week === week && i.day === day && !i.ready)) {
+        throw conflict('docs_closed', 'Shotlist dan skrip bisa diunggah setelah semua SDM hari itu Ready');
+      }
+      const key = `${week}#${day}`;
+      const d = docs.get(key) ?? { shotlistUrl: null, shotlistBy: null, skripUrl: null, skripBy: null, talentAt: null, talentBy: null };
+      if (kind === 'shotlist') Object.assign(d, { shotlistUrl: url, shotlistBy: u.id });
+      else Object.assign(d, { skripUrl: url, skripBy: u.id });
+      docs.set(key, d);
+      return { week: weekDto(week, u) };
+    }
+    if (parts[3] === 'reconfirm-talent' && method === 'POST') {
+      const u = role('leader');
+      if (!sdmItems.some((i) => i.week === week && i.day === day && i.type === 'talent')) throw conflict('no_talent', 'Tidak ada talent yang perlu dikonfirmasi pada hari ini');
+      const key = `${week}#${day}`;
+      const d = docs.get(key) ?? { shotlistUrl: null, shotlistBy: null, skripUrl: null, skripBy: null, talentAt: null, talentBy: null };
+      Object.assign(d, { talentAt: new Date().toISOString(), talentBy: u.id });
+      docs.set(key, d);
+      return { week: weekDto(week, u) };
+    }
+  }
+  return undefined;
+}
+
 
 function toItem(b: BriefRec): BriefListItem {
   const r = users.find((u) => u.id === b.requesterId);
@@ -233,7 +540,13 @@ function briefRoute(method: string, path: string, body: unknown): unknown | unde
       }
       if (requiresReason(jalurOf(b.input.jenis), b.status, to) && !reason) throw new ApiError(400, 'reason_required', 'Alasan wajib diisi');
       const now = new Date().toISOString();
-      if (b.status === 'backlog') b.submittedAt = now;
+      if (b.status === 'backlog') {
+        b.submittedAt = now;
+        if (isWeekly(b.input.jenis)) {
+          b.weekStart = productionWeekFor(todayJakarta(new Date(now)));
+          b.day = null;
+        }
+      }
       if (to === 'complete') b.completedAt = now;
       if (to === 'revisi') b.revisionCount += 1;
       b.history.push({ from: b.status, to, actorId: u.id, reason, at: now });
@@ -245,7 +558,7 @@ function briefRoute(method: string, path: string, body: unknown): unknown | unde
 }
 
 function route(method: string, path: string, body: unknown): unknown {
-  const handled = briefRoute(method, path, body);
+  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body);
   if (handled !== undefined) return handled;
 
   if (method === 'POST' && path === '/api/auth/login') {

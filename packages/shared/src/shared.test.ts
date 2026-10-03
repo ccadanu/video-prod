@@ -44,8 +44,8 @@ describe('state machine status', () => {
   });
 
   it('jalur Shooting + Edit: syuting → footage → editor → review → selesai', () => {
-    const path = ['listing', 'locking', 'validasi_sdm', 'ready', 'syuting', 'footage_siap', 'terkirim', 'antre_editing', 'editing', 'in_review', 'complete'] as const;
-    const actors = ['videografer', 'videografer', 'videografer', 'videografer', 'videografer', 'videografer', 'system', 'leader', 'editor', 'user'] as const;
+    const path = ['listing', 'validasi_sdm', 'ready', 'syuting', 'footage_siap', 'terkirim', 'antre_editing', 'editing', 'in_review', 'complete'] as const;
+    const actors = ['videografer', 'videografer', 'videografer', 'videografer', 'videografer', 'system', 'leader', 'editor', 'user'] as const;
     path.slice(0, -1).forEach((from, i) => {
       const to = path[i + 1]!;
       expect(canTransition('weekly_edit', from, to, actors[i]!), `${from} → ${to}`).toBe(true);
@@ -88,6 +88,12 @@ describe('state machine status', () => {
     expect(canTransition('weekly_edit', 'revisi', 'editing', 'editor')).toBe(true);
     expect(canTransition('weekly_direct', 'revisi', 'syuting', 'videografer')).toBe(true);
     expect(canTransition('weekly_direct', 'revisi', 'editing', 'editor')).toBe(false);
+  });
+
+  it('kesiapan yang dibatalkan (ready → validasi_sdm) wajib beralasan dan tidak untuk User', () => {
+    expect(canTransition('weekly_edit', 'ready', 'validasi_sdm', 'videografer')).toBe(true);
+    expect(canTransition('weekly_edit', 'ready', 'validasi_sdm', 'user')).toBe(false);
+    expect(requiresReason('weekly_edit', 'ready', 'validasi_sdm')).toBe(true);
   });
 
   it('menandai transisi yang wajib beralasan', () => {

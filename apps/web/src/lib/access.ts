@@ -24,7 +24,7 @@ export function canAccessPath(role: Role, pathname: string): boolean {
 }
 
 /** Fitur yang sudah dibangun; sisanya tampil sebagai "Segera" di sidebar. */
-export const BUILT = new Set<string>(['admin-users', 'brief-order']);
+export const BUILT = new Set<string>(['admin-users', 'brief-order', 'weekly-listing']);
 
 export const ROADMAP: Record<string, { phase: string; blurb: string }> = {
   dashboard: { phase: 'Fase 5', blurb: 'Rangkuman performa tim: konten selesai, kepuasan User, kesesuaian SLA, revision rate.' },

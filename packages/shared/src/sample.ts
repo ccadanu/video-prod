@@ -30,3 +30,74 @@ export const SAMPLE_BRIEFS: readonly SampleBrief[] = [
   { judul: 'Infografis Data Q2', produk: 'ASA', kategori: 'Infografis', jenis: 'motion', rasio: '16:9', durasiDetik: 30, status: 'complete', daysAgo: 8 },
   { judul: 'Teaser Bulan Hemat', produk: 'MONGOL KHAN', kategori: 'Lifestyle/Mood', jenis: 'full_ai', rasio: '4:5', durasiDetik: 20, status: 'pending_review', daysAgo: 0 },
 ];
+
+// ───────────── Contoh isi satu pekan Weekly Listing (seed dev & pratinjau) ─────────────
+
+export interface SampleWeeklyItem {
+  judul: string;
+  produk: string;
+  kategori: string;
+  jenis: 'shooting_only' | 'shooting_edit' | 'photoshoot';
+  rasio: Rasio;
+  durasiDetik: number | null;
+  talent: string;
+  kostum: string;
+  lokasi: string;
+  properti: string;
+  desain: string;
+  fuProperti: string;
+  fuKostum: string;
+  fuDesain: string;
+  bobot: 'gampang' | 'susah';
+  day: number | null;
+}
+
+/** PRNG kecil yang deterministik agar contoh stabil di setiap seed. */
+function mulberry(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function sampleWeekly(count = 22): SampleWeeklyItem[] {
+  const r = mulberry(2026);
+  const pick = <T>(a: readonly T[]): T => a[Math.floor(r() * a.length)]!;
+  const PRODUK = ['FITGRAINS', 'GLUTAFIELD', 'ETAWAKU', 'ETALLAGEN', 'ETAWALIN', 'ASA', 'MONGOL KHAN'];
+  const FRASA = ['PROMO 9.9', 'HARGA RESMI', 'VIRAL', 'BULAN HEMAT', 'SENDI ENTENG', 'KRONIS NYERI', 'TESTIMONI', 'PAKET SEPAKAT', 'LUTUT ENTENG', 'REKOMENDASI', 'SETELAH MINUM', 'BESAR BESARAN'];
+  const KAT = ['Talking Head', 'Product Story', 'Science/Demo', 'Lifestyle/Mood', 'Character/Skit', 'Company Kit'];
+  const JENIS = ['shooting_edit', 'shooting_edit', 'shooting_only', 'photoshoot'] as const;
+  const TALENT = ['Lida', 'Rani', 'Bima', 'dr. Aji', 'Bu Tatik', 'Cindo', 'Bu Nurul', 'Ibu-ibu', 'Cewek muda'];
+  const KOSTUM = ['Casual', 'Formal', 'Daster', 'Olahraga'];
+  const LOKASI = ['Studio', 'Studio', 'Cafe', 'Homestay', 'Kantor', 'Kantor', 'Teras'];
+  const out: SampleWeeklyItem[] = [];
+  for (let i = 0; i < count; i++) {
+    const jenis = pick(JENIS);
+    const fuProp = r() < 0.25 ? pick(['Teko keramik', 'Uang prop 100rb', 'Bunga segar', 'Papan nama']) : '';
+    const fuKostum = r() < 0.12 ? pick(['Kebaya modern', 'Seragam brand']) : '';
+    const fuDesain = r() < 0.18 ? pick(['Frame design', 'Overlay grafis']) : '';
+    out.push({
+      judul: `${pick(FRASA)} ${i + 1}`,
+      produk: pick(PRODUK),
+      kategori: pick(KAT),
+      jenis,
+      rasio: pick(['9:16', '9:16', '16:9', '4:5'] as const),
+      durasiDetik: jenis === 'photoshoot' ? null : pick([30, 45, 60, 90]),
+      talent: pick(TALENT),
+      kostum: pick(KOSTUM),
+      lokasi: pick(LOKASI),
+      properti: 'Box produk',
+      desain: fuDesain ? 'Perlu frame desain' : 'Tidak ada',
+      fuProperti: fuProp,
+      fuKostum,
+      fuDesain,
+      bobot: r() < 0.32 ? 'susah' : 'gampang',
+      // 4 konten terakhir sengaja belum dijadwalkan agar langkah "Propose Jadwal" bisa dicoba.
+      day: i >= count - 4 ? null : Math.floor(r() * 5),
+    });
+  }
+  return out;
+}

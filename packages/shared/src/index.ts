@@ -7,3 +7,4 @@ export * from './nav';
 export * from './schemas';
 export * from './briefs';
 export * from './sample';
+export * from './weekly';
