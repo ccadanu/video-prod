@@ -54,5 +54,5 @@ bila web dilayani dari origin berbeda, dan buat admin awal dengan
 
 ## Status
 
-Fase 0 (fondasi), Fase 1 (Brief Order), dan Fase 2 (Weekly Listing) selesai. Lihat `docs/ASSUMPTIONS.md` untuk asumsi yang perlu dikonfirmasi.
-Fase berikutnya: Daily Shooting (MVP).
+Fase 0 (fondasi), Fase 1 (Brief Order), Fase 2 (Weekly Listing), dan Fase 3 (Daily Shooting) selesai: MVP Fase 0–3 lengkap. Lihat `docs/ASSUMPTIONS.md` untuk asumsi yang perlu dikonfirmasi.
+Fase berikutnya (menunggu jawaban Open Item SLA editing, kapasitas editor, FIFO, definisi "Susah" paralel): Fase 4 Editing, Fase 5 Dashboard/KPI/Blind Review, Fase 6 deploy.

@@ -32,6 +32,12 @@ Hal-hal yang diputuskan sementara saat membangun. Tandai yang sudah dikonfirmasi
 | 23 | Shotlist dan Skrip berupa link Google Docs, bisa diunggah VG mana pun (PIC Hardi/Yofa tidak dikunci) setelah semua SDM hari itu Ready. Konfirmasi ulang talent H-1 oleh Leader tanpa tenggat otomatis | PRD §6.5 | Usulan |
 | 24 | User hanya melihat konten miliknya di Weekly Listing, tanpa kapasitas, SDM, atau dokumen harian | PRD §2 "User = read-only" | Perlu konfirmasi |
 | 25 | "Tunda ke pekan depan": hari dikosongkan dan SDM disinkronkan. "Kembalikan ke User (Backlog)" hanya sebelum Locking, boleh oleh VG atau Leader | PRD §6.8 | Usulan |
+| 26 | Kolom Daily Shooting: Belum Take / Sedang Take / Footage Siap / Terkirim, plus "Nanti" untuk hari berikutnya. Konten hari lampau yang belum terkirim tetap tampil (terlewat/terbawa) sampai diserahkan atau di-reschedule; yang sudah terkirim hanya tampil di hari syutingnya | PRD §6.6 | Usulan |
+| 27 | PIC take = VG yang pertama menekan Mulai Take. Hold hanya untuk konten Ready/Syuting/Footage Siap dan wajib beralasan; Resume mengembalikan ke kolom semula | PRD §6.6 | Usulan |
+| 28 | Reschedule/Pull to Today memindahkan hari tanpa membatalkan Ready pekan, tetapi SDM hari baru disinkronkan dan harus Ready. Tunda ke pekan depan dari Daily hanya dari Ready/Syuting dan wajib beralasan | PRD §6.6, §6.8 | Usulan |
+| 29 | Bukti Serah Footage: Drive wajib tautan drive.google.com; HDD hanya catatan teks (nama disk, path, nama file) tanpa verifikasi. Setelah serah: Shooting+Edit → Antre Editing, Shooting Only/Photoshoot → In Review | PRD §6.7, BPM | Usulan |
+| 30 | Revisi Shooting Only/Photoshoot kembali ke VG (take ulang di kolom Belum Take); revisi Shooting+Edit kembali ke Editor | BPM | Perlu konfirmasi |
+| 31 | Leader dan Admin hanya membaca Daily Shooting; User tidak punya akses halaman ini | PRD §2 | Usulan |
 
 ## Teknis
 

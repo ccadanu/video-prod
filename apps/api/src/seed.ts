@@ -1,5 +1,6 @@
-import { SAMPLE_BRIEFS, addDays, briefInputSchema, productionWeekFor, sampleWeekly, todayJakarta } from '@ccp/shared';
+import { SAMPLE_BRIEFS, addDays, briefInputSchema, mondayOf, productionWeekFor, routeOf, sampleExecution, sampleWeekly, todayJakarta, type Status } from '@ccp/shared';
 import { insertBrief } from './briefs';
+import { syncSdm } from './weekly';
 import { loadConfig } from './config';
 import { migrate, openDb } from './db';
 import { hashPassword } from './password';
@@ -98,6 +99,53 @@ if (config.env !== 'production') {
     }
   }
 }
-console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh, ${weeklyCreated} konten pekan Weekly Listing.`);
+
+// Pekan yang sedang berjalan (Ready to Execute) untuk mencoba Daily Shooting.
+let execCreated = 0;
+if (config.env !== 'production') {
+  const requester = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'arya@ccp.local'");
+  const vgUser = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'hardi@ccp.local'");
+  const leaderUser = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'leader@ccp.local'");
+  const week = mondayOf(todayJakarta());
+  const marker = sampleExecution()[0]!.judul;
+  const exists = (await db.one<{ n: number }>('SELECT COUNT(*)::int AS n FROM briefs WHERE judul = $1', [marker]))!.n;
+  if (requester && vgUser && leaderUser && exists === 0) {
+    for (const [i, x] of sampleExecution().entries()) {
+      const input = briefInputSchema.parse({
+        jenis: x.jenis, kategori: x.kategori, produk: x.produk, judul: x.judul, rasio: x.rasio, durasiDetik: x.durasiDetik,
+        linkDocs: 'https://docs.google.com/document/d/contoh', catatan: '',
+        attributes: { talent: x.talent, kostum: 'Casual', lokasi: x.lokasi, lokasiDetail: '', properti: 'Box produk', desain: 'Tidak ada' },
+      });
+      const next: Status = routeOf(x.jenis) === 'editor' ? 'antre_editing' : 'in_review';
+      const status: Status = x.state === 'ready' ? 'ready' : x.state === 'syuting' ? 'syuting' : x.state === 'footage' ? 'footage_siap' : next;
+      const id = await insertBrief(db, {
+        requesterId: requester.id, input, status, actorId: requester.id, submittedAt: new Date(Date.now() - 7 * 86_400_000),
+        weekly: { weekStart: week, bobot: x.bobot, day: x.day, fuProperti: '', fuKostum: '', fuDesain: '' },
+      });
+      if (x.state !== 'ready') await db.query('UPDATE briefs SET pic_id = $2 WHERE id = $1', [id, vgUser.id]);
+      if (x.hold) await db.query('UPDATE briefs SET hold_reason = $2 WHERE id = $1', [id, x.hold]);
+      if (x.state === 'handed') {
+        await db.query(
+          'INSERT INTO footage_handoffs (brief_id, storage, drive_url, disk_name, path, file_name, handed_by) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          x.storage === 'hdd'
+            ? [id, 'hdd', null, 'HDD-CCP-02', `/${week.slice(0, 4)}/Okt/${['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'][x.day]}/`, `clip_${i + 1}.mp4`, vgUser.id]
+            : [id, 'drive', `https://drive.google.com/drive/folders/contoh-${i + 1}`, null, null, null, vgUser.id],
+        );
+      }
+      execCreated++;
+    }
+    await db.query('INSERT INTO weekly_weeks (week_start, locked_at, locked_by, ready_at, ready_by) VALUES ($1, now(), $2, now(), $2) ON CONFLICT (week_start) DO UPDATE SET locked_at = now(), locked_by = $2, ready_at = now(), ready_by = $2', [week, vgUser.id]);
+    await syncSdm(db, week);
+    await db.query('UPDATE sdm_items SET ready = TRUE, ready_by = $2, ready_at = now() WHERE week_start = $1', [week, leaderUser.id]);
+    for (let d = 0; d < 5; d++) {
+      await db.query(
+        `INSERT INTO weekly_day_docs (week_start, day, shotlist_url, shotlist_by, shotlist_at, skrip_url, skrip_by, skrip_at, talent_reconfirmed_by, talent_reconfirmed_at)
+         VALUES ($1, $2, $3, $4, now(), $5, $4, now(), $6, now()) ON CONFLICT DO NOTHING`,
+        [week, d, `https://docs.google.com/document/d/shotlist-${d}`, vgUser.id, `https://docs.google.com/document/d/skrip-${d}`, leaderUser.id],
+      );
+    }
+  }
+}
+console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh, ${weeklyCreated} konten pekan Weekly Listing, ${execCreated} konten pekan berjalan.`);
 if (config.env !== 'production') console.log(`Login demo: <email>@ccp.local / ${DEMO_PASSWORD}`);
 await db.close();

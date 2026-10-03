@@ -101,3 +101,55 @@ export function sampleWeekly(count = 22): SampleWeeklyItem[] {
   }
   return out;
 }
+
+// ───────────── Contoh pekan yang sedang berjalan (Daily Shooting) ─────────────
+
+export interface SampleExecItem {
+  judul: string;
+  produk: string;
+  kategori: string;
+  jenis: 'shooting_only' | 'shooting_edit' | 'photoshoot';
+  rasio: Rasio;
+  durasiDetik: number | null;
+  talent: string;
+  lokasi: string;
+  bobot: 'gampang' | 'susah';
+  day: number;
+  state: 'ready' | 'syuting' | 'footage' | 'handed';
+  storage?: 'drive' | 'hdd';
+  hold?: string;
+}
+
+/**
+ * Satu pekan yang sudah Ready dan sedang dieksekusi. Skenario tetap (tidak bergantung tanggal):
+ * Senin–Selasa selesai terkirim, Rabu campuran (belum take, sedang take, footage siap, terkirim, hold), Kamis–Jumat terjadwal.
+ */
+export function sampleExecution(): SampleExecItem[] {
+  const mk = (
+    i: number, day: number, state: SampleExecItem['state'], jenis: SampleExecItem['jenis'], talent: string, lokasi: string, extra: Partial<SampleExecItem> = {},
+  ): SampleExecItem => ({
+    judul: `${['TESTIMONI', 'PROMO 9.9', 'VIRAL', 'SENDI ENTENG', 'HARGA RESMI', 'KRONIS NYERI', 'REKOMENDASI', 'PAKET SEPAKAT'][i % 8]} ${100 + i}`,
+    produk: ['FITGRAINS', 'ETAWAKU', 'GLUTAFIELD', 'ETALLAGEN', 'ETAWALIN'][i % 5]!,
+    kategori: ['Talking Head', 'Product Story', 'Science/Demo', 'Character/Skit'][i % 4]!,
+    jenis, rasio: '9:16', durasiDetik: jenis === 'photoshoot' ? null : 45, talent, lokasi, bobot: i % 4 === 0 ? 'susah' : 'gampang', day, state, ...extra,
+  });
+  return [
+    mk(0, 0, 'handed', 'shooting_edit', 'Rani', 'Studio', { storage: 'drive' }),
+    mk(1, 0, 'handed', 'shooting_only', 'Bu Tatik', 'Homestay', { storage: 'drive' }),
+    mk(2, 0, 'handed', 'shooting_edit', 'Lida', 'Kantor', { storage: 'hdd' }),
+    mk(3, 1, 'handed', 'photoshoot', 'Cindo', 'Studio', { storage: 'drive' }),
+    mk(4, 1, 'handed', 'shooting_edit', 'dr. Aji', 'Cafe', { storage: 'hdd' }),
+    mk(5, 2, 'handed', 'shooting_edit', 'Rani', 'Studio', { storage: 'drive' }),
+    mk(6, 2, 'handed', 'shooting_only', 'Bima', 'Studio', { storage: 'drive' }),
+    mk(7, 2, 'footage', 'shooting_edit', 'Lida', 'Studio'),
+    mk(8, 2, 'syuting', 'shooting_only', 'Bu Nurul', 'Teras'),
+    mk(9, 2, 'ready', 'shooting_edit', 'Rani', 'Studio'),
+    mk(10, 2, 'ready', 'photoshoot', 'Cewek muda', 'Kantor'),
+    mk(11, 2, 'ready', 'shooting_edit', 'Bima', 'Homestay', { hold: 'Talent terlambat 2 jam' }),
+    mk(12, 3, 'ready', 'shooting_edit', 'Lida', 'Kantor'),
+    mk(13, 3, 'ready', 'shooting_only', 'Cindo', 'Cafe'),
+    mk(14, 3, 'ready', 'shooting_edit', 'Rani', 'Studio'),
+    mk(15, 4, 'ready', 'shooting_edit', 'dr. Aji', 'Studio'),
+    mk(16, 4, 'ready', 'photoshoot', 'Bu Tatik', 'Kantor'),
+  ];
+}

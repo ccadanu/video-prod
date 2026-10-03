@@ -13,7 +13,7 @@ export function WeekPicker({ week, onChange }: { week: string; onChange: (week: 
   const first = (year: number, month: number) => mondaysOfMonth(year, month)[0]!;
 
   return (
-    <div className="flex items-center gap-1.5" role="group" aria-label="Pilih pekan">
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Pilih pekan">
       <button aria-label="Pekan sebelumnya" onClick={() => onChange(addDays(week, -7))} className="rounded-md p-1.5 text-muted hover:bg-line-soft hover:text-ink">
         <ChevronLeft size={16} />
       </button>

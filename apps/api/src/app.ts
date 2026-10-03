@@ -10,6 +10,7 @@ import { HttpError } from './errors';
 import { COOKIE_NAME, userForToken, type UserRow } from './sessions';
 import { authRoutes } from './routes/auth';
 import { briefRoutes } from './routes/briefs';
+import { dailyRoutes } from './routes/daily';
 import { weeklyRoutes } from './routes/weekly';
 import { userRoutes } from './routes/users';
 
@@ -82,7 +83,8 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
       return reply.status(err.statusCode).send({ error: { code: err.code, message: err.message } });
     }
     if (err instanceof ZodError) {
-      const message = err.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ');
+      // Satu galat: tampilkan pesannya saja (siap pakai di form). Beberapa galat: sertakan nama kolom agar jelas mana yang salah.
+      const message = err.issues.length === 1 ? err.issues[0]!.message : err.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ');
       return reply.status(400).send({ error: { code: 'validation', message } });
     }
     const e = err as { statusCode?: number; message?: string };
@@ -98,6 +100,7 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
   await app.register(userRoutes, { prefix: '/api/users' });
   await app.register(briefRoutes, { prefix: '/api/briefs' });
   await app.register(weeklyRoutes, { prefix: '/api/weekly' });
+  await app.register(dailyRoutes, { prefix: '/api/daily' });
 
   return app;
 }

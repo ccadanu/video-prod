@@ -74,6 +74,9 @@ export const TRANSITIONS: readonly Transition[] = [
   // Produksi (Daily Shooting)
   { from: 'ready', to: 'syuting', actors: ['videografer'], jalur: WEEKLY },
   { from: 'syuting', to: 'footage_siap', actors: ['videografer'], jalur: WEEKLY },
+  // Penyesuaian hari-H (PRD §7.6): take dibatalkan lalu dijadwal ulang atau ditunda ke pekan depan.
+  { from: 'syuting', to: 'ready', actors: ['videografer'], jalur: WEEKLY, reason: true },
+  { from: 'syuting', to: 'listing', actors: ['videografer'], jalur: WEEKLY, reason: true },
   { from: 'footage_siap', to: 'terkirim', actors: ['videografer'], jalur: WEEKLY },
   // Handoff bercabang (PRD §7.4)
   { from: 'terkirim', to: 'antre_editing', actors: ['system'], jalur: ['weekly_edit'] },

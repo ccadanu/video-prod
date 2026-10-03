@@ -212,7 +212,7 @@ export async function getWeek(db: Queryable, week: string, viewer: { id: number;
 // ───────────── Sinkronisasi SDM & pembatalan Ready ─────────────
 
 /** Menyamakan sdm_items dengan kebutuhan konten terjadwal yang sudah dikunci. Status Ready item yang tidak berubah dipertahankan. */
-async function syncSdm(tx: Queryable, week: string): Promise<void> {
+export async function syncSdm(tx: Queryable, week: string): Promise<void> {
   const rows = await tx.query<ContentRow>(
     `${CONTENT_SQL} WHERE b.week_start = $1 AND b.shoot_day IS NOT NULL AND b.status NOT IN (${HIDDEN}, 'listing')`,
     [week],
@@ -367,17 +367,20 @@ export async function patchContent(db: Db, actorId: number, id: number, patch: C
   });
 }
 
-/** Tunda ke pekan depan (VG, wajib beralasan): kembali ke Listing di pekan berikutnya, hari dikosongkan. */
-export async function postponeContent(db: Db, actorId: number, id: number, reason: string): Promise<string> {
+/**
+ * Tunda ke pekan depan (VG, wajib beralasan): kembali ke Listing di pekan berikutnya, hari dikosongkan.
+ * `fromShooting`: dipanggil dari Daily Shooting (hari-H), boleh dari status syuting dan tidak membatalkan Ready pekan berjalan.
+ */
+export async function postponeContent(db: Db, actorId: number, id: number, reason: string, fromShooting = false): Promise<string> {
   return db.transaction(async (tx) => {
     const row = await loadContent(tx, id);
-    assertPlanning(row);
+    if (!(fromShooting && row.status === 'syuting')) assertPlanning(row);
     const nextWeek = addDays(row.week_start, 7);
-    await tx.query("UPDATE briefs SET week_start = $2, status = 'listing', shoot_day = NULL, updated_at = now() WHERE id = $1", [id, nextWeek]);
+    await tx.query("UPDATE briefs SET week_start = $2, status = 'listing', shoot_day = NULL, hold_reason = NULL, updated_at = now() WHERE id = $1", [id, nextWeek]);
     await addEvent(tx, id, row.status, 'listing', actorId, `Ditunda ke ${weekLabel(nextWeek)}. Alasan: ${reason}`);
     if (row.status !== 'listing') {
       await syncSdm(tx, row.week_start);
-      await reevaluateWeek(tx, row.week_start, actorId, `konten ${row.code} ditunda`);
+      if (!fromShooting) await reevaluateWeek(tx, row.week_start, actorId, `konten ${row.code} ditunda`);
     }
     await audit(tx, actorId, 'weekly.postpone', 'brief', id, { from: row.week_start, to: nextWeek, reason });
     return row.week_start;

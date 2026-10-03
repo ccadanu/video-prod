@@ -18,6 +18,18 @@ import {
   slotsUsed,
   weekLabel,
   weekProgress,
+  dailyColumn,
+  handoffNeedsDrive,
+  handoffSchema,
+  mondayOf,
+  pullSchema,
+  rescheduleSchema,
+  routeOf,
+  sampleExecution,
+  summarize,
+  type DailyCard,
+  type DayBoard,
+  type HandoffProof,
   type SdmItem,
   type SdmType,
   type DayInfo,
@@ -126,6 +138,9 @@ interface BriefRec {
   bobot: 'gampang' | 'susah';
   day: number | null;
   fu: { properti: string; kostum: string; desain: string };
+  hold: string | null;
+  proof: HandoffProof | null;
+  picId: number | null;
   history: { from: Status | null; to: Status; actorId: number | null; reason: string; at: string }[];
 }
 
@@ -143,7 +158,7 @@ function pushBrief(requesterId: number, input: BriefInput, status: Status, at: D
   const rec: BriefRec = {
     id: nextBriefId++, code: demoCode(at), requesterId, input, status, revisionCount: 0, submittedAt: at.toISOString(), completedAt: null,
     weekStart: isWeekly(input.jenis) ? productionWeekFor(todayJakarta(at)) : null, bobot: 'gampang', day: null,
-    fu: { properti: '', kostum: '', desain: '' },
+    fu: { properti: '', kostum: '', desain: '' }, hold: null, proof: null, picId: null,
     history: [{ from: null, to: status, actorId: requesterId, reason, at: at.toISOString() }], ...extra,
   };
   briefs.push(rec);
@@ -287,6 +302,161 @@ function weekDto(week: string, viewer: Rec): WeekDto {
     lockedAt: w?.lockedAt ?? null, lockedByName: nameOf(w?.lockedBy ?? null), readyAt: w?.readyAt ?? null, readyByName: nameOf(w?.readyBy ?? null),
     progress: progressOf(week), contents, days, sdm,
   };
+}
+
+// ───────────── Pekan yang sedang berjalan (Daily Shooting) ─────────────
+
+const EXEC_WEEK = mondayOf(todayJakarta());
+{
+  const dayNames = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
+  for (const [i, x] of sampleExecution().entries()) {
+    const input = briefInputSchema.parse({
+      jenis: x.jenis, kategori: x.kategori, produk: x.produk, judul: x.judul, rasio: x.rasio, durasiDetik: x.durasiDetik,
+      linkDocs: 'https://docs.google.com/document/d/contoh', catatan: '',
+      attributes: { talent: x.talent, kostum: 'Casual', lokasi: x.lokasi, lokasiDetail: '', properti: 'Box produk', desain: 'Tidak ada' },
+    });
+    const next: Status = routeOf(x.jenis) === 'editor' ? 'antre_editing' : 'in_review';
+    const status: Status = x.state === 'ready' ? 'ready' : x.state === 'syuting' ? 'syuting' : x.state === 'footage' ? 'footage_siap' : next;
+    const rec = pushBrief(6, input, status, new Date(Date.now() - 7 * DAY), { weekStart: EXEC_WEEK, bobot: x.bobot, day: x.day });
+    if (x.state !== 'ready') rec.picId = 3;
+    if (x.hold) rec.hold = x.hold;
+    if (x.state === 'handed') {
+      rec.proof = x.storage === 'hdd'
+        ? { storage: 'hdd', driveUrl: null, diskName: 'HDD-CCP-02', path: `/${EXEC_WEEK.slice(0, 4)}/Okt/${dayNames[x.day]}/`, fileName: `clip_${i + 1}.mp4`, handedAt: new Date().toISOString(), handedByName: 'Hardi' }
+        : { storage: 'drive', driveUrl: `https://drive.google.com/drive/folders/contoh-${i + 1}`, diskName: null, path: null, fileName: null, handedAt: new Date().toISOString(), handedByName: 'Hardi' };
+    }
+  }
+  weeks.set(EXEC_WEEK, { lockedAt: new Date().toISOString(), lockedBy: 3, readyAt: new Date().toISOString(), readyBy: 3 });
+  syncSdm(EXEC_WEEK);
+  for (const it of sdmItems.filter((x) => x.week === EXEC_WEEK)) Object.assign(it, { ready: true, readyBy: 2, readyAt: new Date().toISOString() });
+  for (let d = 0; d < 5; d++) {
+    docs.set(`${EXEC_WEEK}#${d}`, {
+      shotlistUrl: `https://docs.google.com/document/d/shotlist-${d}`, shotlistBy: 3, skripUrl: `https://docs.google.com/document/d/skrip-${d}`, skripBy: 3, talentAt: new Date().toISOString(), talentBy: 2,
+    });
+  }
+}
+
+// ───────────── Daily Shooting (memori) ─────────────
+
+function boardOf(week: string, day: number): DayBoard {
+  const unready = new Set(sdmItems.filter((i) => i.week === week && !i.ready).map((i) => sdmKey(i.day, i)));
+  const cards: DailyCard[] = [];
+  for (const b of briefs) {
+    if (b.weekStart !== week || b.day === null || !(['ready', 'syuting', 'footage_siap'].includes(b.status) || b.proof)) continue;
+    const column = dailyColumn({ status: b.status, day: b.day, handedOff: b.proof !== null, redo: b.status === 'revisi' && routeOf(b.input.jenis) === 'review' }, day);
+    if (!column) continue;
+    const a = b.input.attributes!;
+    cards.push({
+      id: b.id, code: b.code, judul: b.input.judul, produk: b.input.produk, jenis: b.input.jenis, status: b.status, day: b.day, column,
+      talent: a.talent, lokasi: a.lokasi === 'Lainnya' && a.lokasiDetail ? a.lokasiDetail : a.lokasi, bobot: b.bobot, route: routeOf(b.input.jenis),
+      holdReason: b.hold, fromDay: b.day < day && column !== 'terkirim' ? b.day : null,
+      sdmIssue: sdmNeeds(sdmSrc(b)).some((n) => unready.has(sdmKey(b.day!, n))), proof: b.proof,
+    });
+  }
+  const d = docs.get(`${week}#${day}`);
+  return {
+    weekStart: week, day, date: addDays(week, day), weekLabel: weekLabel(week), weekReady: weeks.get(week)?.readyAt != null,
+    summary: summarize(cards), guide: { shotlistUrl: d?.shotlistUrl ?? null, skripUrl: d?.skripUrl ?? null },
+    dayCounts: [0, 1, 2, 3, 4].map((x) => briefs.filter((b) => b.weekStart === week && b.day === x && (['ready', 'syuting', 'footage_siap'].includes(b.status) || b.proof)).length),
+    cards,
+  };
+}
+
+function dailyRoute(method: string, path: string, body: unknown): unknown | undefined {
+  let m = /^\/api\/daily\/([^/]+)\/(\d+)$/.exec(path);
+  if (m && method === 'GET') {
+    role('videografer', 'leader', 'admin');
+    if (!isWeekStart(m[1]!)) throw new ApiError(400, 'bad_week', 'Pekan harus berupa tanggal Senin (YYYY-MM-DD)');
+    const day = Number(m[2]);
+    if (day < 0 || day > 4) throw new ApiError(400, 'bad_day', 'Hari harus 0 (Senin) sampai 4 (Jumat)');
+    return { board: boardOf(m[1]!, day) };
+  }
+  m = /^\/api\/daily\/contents\/(\d+)\/([a-z]+)$/.exec(path);
+  if (!m || method !== 'POST') return undefined;
+  const u = role('videografer');
+  const b = briefs.find((x) => x.id === Number(m![1]));
+  if (!b || !b.weekStart || b.day === null) throw new ApiError(404, 'not_found', 'Konten tidak ditemukan');
+  const need = (cond: boolean, msg: string, code = 'bad_state') => {
+    if (!cond) throw conflict(code, msg);
+  };
+  const notHeld = () => need(b.hold === null, 'Konten sedang di-hold. Lanjutkan dulu (Resume).', 'held');
+  const week = b.weekStart;
+  const redo = b.status === 'revisi' && routeOf(b.input.jenis) === 'review';
+
+  switch (m[2]) {
+    case 'start':
+      need(b.status === 'ready' || redo, 'Hanya konten Ready (atau revisi Shooting Only/Photoshoot) yang bisa mulai take');
+      notHeld();
+      b.picId ??= u.id;
+      evt(b, 'syuting', u.id, redo ? 'Take ulang karena revisi' : '');
+      return { ok: true };
+    case 'finish':
+      need(b.status === 'syuting', 'Take belum dimulai');
+      notHeld();
+      evt(b, 'footage_siap', u.id, '');
+      return { ok: true };
+    case 'handoff': {
+      need(b.status === 'footage_siap', 'Footage belum siap diserahkan');
+      notHeld();
+      const input = handoffSchema.parse(body);
+      if (handoffNeedsDrive(b.input.jenis) && input.storage !== 'drive') throw conflict('drive_required', 'Jenis ini langsung ke Review User, footage wajib diunggah ke Drive.');
+      b.proof = {
+        storage: input.storage, driveUrl: input.storage === 'drive' ? input.driveUrl : null, diskName: input.storage === 'hdd' ? input.diskName : null,
+        path: input.storage === 'hdd' ? input.path : null, fileName: input.storage === 'hdd' ? input.fileName : null, handedAt: new Date().toISOString(), handedByName: u.name,
+      };
+      evt(b, 'terkirim', u.id, input.storage === 'drive' ? 'Footage di Drive' : `Footage di ${input.diskName}`);
+      evt(b, routeOf(b.input.jenis) === 'editor' ? 'antre_editing' : 'in_review', 0, '');
+      b.history[b.history.length - 1]!.actorId = null;
+      return { ok: true };
+    }
+    case 'hold': {
+      const { reason } = reasonSchema.parse(body);
+      need(['ready', 'syuting', 'footage_siap'].includes(b.status), 'Konten ini tidak bisa di-hold');
+      need(b.hold === null, 'Konten sudah di-hold');
+      b.hold = reason;
+      evt(b, b.status, u.id, `Hold: ${reason}`);
+      return { ok: true };
+    }
+    case 'resume':
+      need(b.hold !== null, 'Konten tidak sedang di-hold');
+      b.hold = null;
+      evt(b, b.status, u.id, 'Hold dilanjutkan (Resume)');
+      return { ok: true };
+    case 'reschedule': {
+      const { day, reason } = rescheduleSchema.parse(body);
+      need(b.status === 'ready' || b.status === 'syuting', 'Hanya konten yang belum selesai di-take yang bisa dijadwal ulang');
+      need(day !== b.day, 'Pilih hari yang berbeda', 'same_day');
+      const from = b.day;
+      b.day = day;
+      b.hold = null;
+      evt(b, 'ready', u.id, `Reschedule ${DAY_NAMES[from]} → ${DAY_NAMES[day]}. Alasan: ${reason}`);
+      syncSdm(week);
+      return { ok: true };
+    }
+    case 'pull': {
+      const { day } = pullSchema.parse(body);
+      need(b.status === 'ready', 'Hanya konten Ready yang bisa ditarik');
+      notHeld();
+      need(b.day > day, 'Hanya konten hari berikutnya yang bisa ditarik', 'not_later');
+      const from = b.day;
+      b.day = day;
+      evt(b, 'ready', u.id, `Ditarik ke hari ini: ${DAY_NAMES[from]} → ${DAY_NAMES[day]}`);
+      syncSdm(week);
+      return { ok: true };
+    }
+    case 'postpone': {
+      const { reason } = reasonSchema.parse(body);
+      need(b.status === 'ready' || b.status === 'syuting', 'Hanya konten yang belum selesai di-take yang bisa ditunda');
+      b.weekStart = addDays(week, 7);
+      b.day = null;
+      b.hold = null;
+      evt(b, 'listing', u.id, `Ditunda ke ${weekLabel(b.weekStart)}. Alasan: ${reason}`);
+      syncSdm(week);
+      return { ok: true };
+    }
+    default:
+      return undefined;
+  }
 }
 
 function role(...allowed: Rec['role'][]): Rec {
@@ -450,7 +620,7 @@ function toItem(b: BriefRec): BriefListItem {
   return {
     id: b.id, code: b.code, status: b.status, judul: b.input.judul, produk: b.input.produk, kategori: b.input.kategori, jenis: b.input.jenis,
     rasio: b.input.rasio, durasiDetik: b.input.durasiDetik, requester: { id: b.requesterId, name: r?.name ?? '—', unit: r?.unit ?? '' },
-    pic: null, submittedAt: b.submittedAt, slaTargetAt: slaTargetFor(b.input.jenis, b.submittedAt), completedAt: b.completedAt, revisionCount: b.revisionCount,
+    pic: nameOf(b.picId), submittedAt: b.submittedAt, slaTargetAt: slaTargetFor(b.input.jenis, b.submittedAt), completedAt: b.completedAt, revisionCount: b.revisionCount,
   };
 }
 
@@ -558,7 +728,7 @@ function briefRoute(method: string, path: string, body: unknown): unknown | unde
 }
 
 function route(method: string, path: string, body: unknown): unknown {
-  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body);
+  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body) ?? dailyRoute(method, path, body);
   if (handled !== undefined) return handled;
 
   if (method === 'POST' && path === '/api/auth/login') {
@@ -620,7 +790,7 @@ export async function demoApi<T>(path: string, method: string, body: unknown): P
     return route(method, path, body) as T;
   } catch (e) {
     if (e instanceof ZodError) {
-      throw new ApiError(400, 'validation', e.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; '));
+      throw new ApiError(400, 'validation', e.issues.length === 1 ? e.issues[0]!.message : e.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; '));
     }
     throw e;
   }

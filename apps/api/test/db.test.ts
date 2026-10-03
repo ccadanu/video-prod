@@ -79,7 +79,7 @@ describe('upgrade migrasi', () => {
         [`VID-${i}`, i === 3 ? 'motion' : 'shooting_edit', t],
       );
     }
-    expect(await migrate(db)).toEqual(['003_weekly.sql']);
+    expect(await migrate(db)).toEqual(['003_weekly.sql', '004_daily.sql']);
 
     const rows = await db.query<{ code: string; week_start: string | null; bobot: string }>('SELECT code, week_start, bobot FROM briefs ORDER BY id');
     for (const [i, t] of times.slice(0, 3).entries()) {
