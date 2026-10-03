@@ -1,4 +1,5 @@
 import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
@@ -43,6 +44,8 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
   app.decorateRequest('sessionToken', null);
 
   await app.register(cookie);
+  // Hanya diperlukan bila web diakses dari origin berbeda dari API; satu origin (reverse proxy) tidak butuh CORS.
+  await app.register(cors, { origin: config.allowedOrigins, credentials: true });
   await app.register(rateLimit, { global: false });
 
   // Perlindungan CSRF: cookie SameSite=Lax + tolak request tulis dari origin asing.
@@ -65,7 +68,7 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
   app.addHook('onRequest', async (req) => {
     const token = req.cookies[COOKIE_NAME];
     if (!token) return;
-    const user = userForToken(db, token);
+    const user = await userForToken(db, token);
     if (user) {
       req.user = user;
       req.sessionToken = token;

@@ -13,7 +13,7 @@ import {
   type Rasio,
   type Status,
 } from '@ccp/shared';
-import { audit, type Db } from './db';
+import { audit, type Db, type Queryable } from './db';
 
 interface BriefRow {
   id: number;
@@ -61,12 +61,16 @@ const toListItem = (r: BriefRow): BriefListItem => ({
   revisionCount: r.revision_count,
 });
 
-/** Kode brief: VID-YYYYMMDD-NNN, urut per hari (WIB). */
-function nextCode(db: Db, at: Date): string {
+/** Kode brief: VID-YYYYMMDD-NNN, urut per hari (WIB). Penghitung atomik, aman untuk akses bersamaan. */
+async function nextCode(tx: Queryable, at: Date): Promise<string> {
   const day = todayJakarta(at).replaceAll('-', '');
-  const prefix = `VID-${day}-`;
-  const { n } = db.prepare('SELECT COUNT(*) AS n FROM briefs WHERE code LIKE ?').get(`${prefix}%`) as { n: number };
-  return `${prefix}${String(n + 1).padStart(3, '0')}`;
+  const row = await tx.one<{ n: number }>(
+    `INSERT INTO brief_counters (day, n) VALUES ($1, 1)
+     ON CONFLICT (day) DO UPDATE SET n = brief_counters.n + 1
+     RETURNING n`,
+    [day],
+  );
+  return `VID-${day}-${String(row!.n).padStart(3, '0')}`;
 }
 
 export interface InsertBrief {
@@ -80,86 +84,83 @@ export interface InsertBrief {
   reason?: string;
 }
 
-export function insertBrief(db: Db, p: InsertBrief): number {
-  return db.transaction(() => {
+export async function insertBrief(db: Db, p: InsertBrief): Promise<number> {
+  return db.transaction(async (tx) => {
     const submitted = p.submittedAt ?? new Date();
     const submittedIso = submitted.toISOString();
     const { input } = p;
-    const info = db
-      .prepare(
-        `INSERT INTO briefs (code, requester_id, jenis, kategori, produk, judul, rasio, durasi_detik, link_docs, catatan,
-           status, revision_count, submitted_at, sla_target_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        nextCode(db, submitted), p.requesterId, input.jenis, input.kategori, input.produk, input.judul, input.rasio,
+    const row = await tx.one<{ id: number }>(
+      `INSERT INTO briefs (code, requester_id, jenis, kategori, produk, judul, rasio, durasi_detik, link_docs, catatan,
+         status, revision_count, submitted_at, sla_target_at, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       RETURNING id`,
+      [
+        await nextCode(tx, submitted), p.requesterId, input.jenis, input.kategori, input.produk, input.judul, input.rasio,
         input.durasiDetik, input.linkDocs, input.catatan, p.status, p.revisionCount ?? 0, submittedIso,
         slaTargetFor(input.jenis, submittedIso), p.completedAt?.toISOString() ?? null,
-      );
-    const id = Number(info.lastInsertRowid);
-    writeAttributes(db, id, input.attributes);
-    addEvent(db, id, null, p.status, p.actorId, p.reason ?? '');
+      ],
+    );
+    const id = row!.id;
+    await writeAttributes(tx, id, input.attributes);
+    await addEvent(tx, id, null, p.status, p.actorId, p.reason ?? '');
     return id;
-  })();
+  });
 }
 
-export function writeAttributes(db: Db, briefId: number, a: BriefAttributes | null): void {
+export async function writeAttributes(q: Queryable, briefId: number, a: BriefAttributes | null): Promise<void> {
   if (!a) {
-    db.prepare('DELETE FROM brief_attributes WHERE brief_id = ?').run(briefId);
+    await q.query('DELETE FROM brief_attributes WHERE brief_id = $1', [briefId]);
     return;
   }
-  db.prepare(
+  await q.query(
     `INSERT INTO brief_attributes (brief_id, talent, kostum, lokasi, lokasi_detail, properti, desain)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(brief_id) DO UPDATE SET talent = excluded.talent, kostum = excluded.kostum, lokasi = excluded.lokasi,
-       lokasi_detail = excluded.lokasi_detail, properti = excluded.properti, desain = excluded.desain`,
-  ).run(briefId, a.talent, a.kostum, a.lokasi, a.lokasiDetail, a.properti, a.desain);
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (brief_id) DO UPDATE SET talent = EXCLUDED.talent, kostum = EXCLUDED.kostum, lokasi = EXCLUDED.lokasi,
+       lokasi_detail = EXCLUDED.lokasi_detail, properti = EXCLUDED.properti, desain = EXCLUDED.desain`,
+    [briefId, a.talent, a.kostum, a.lokasi, a.lokasiDetail, a.properti, a.desain],
+  );
 }
 
-export function addEvent(db: Db, briefId: number, from: Status | null, to: Status, actorId: number | null, reason: string): void {
-  db.prepare('INSERT INTO brief_events (brief_id, from_status, to_status, actor_id, reason) VALUES (?, ?, ?, ?, ?)').run(
+export async function addEvent(q: Queryable, briefId: number, from: Status | null, to: Status, actorId: number | null, reason: string): Promise<void> {
+  await q.query('INSERT INTO brief_events (brief_id, from_status, to_status, actor_id, reason) VALUES ($1, $2, $3, $4, $5)', [
     briefId, from, to, actorId, reason,
-  );
+  ]);
 }
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
-export function listBriefs(db: Db, opts: { requesterId?: number; filter: BriefFilter; q: string }): BriefListItem[] {
+export async function listBriefs(db: Queryable, opts: { requesterId?: number; filter: BriefFilter; q: string }): Promise<BriefListItem[]> {
   const where: string[] = [];
-  const params: (string | number)[] = [];
-  if (opts.requesterId !== undefined) {
-    where.push('b.requester_id = ?');
-    params.push(opts.requesterId);
-  }
+  const params: unknown[] = [];
+  const bind = (v: unknown) => `$${params.push(v)}`;
+
+  if (opts.requesterId !== undefined) where.push(`b.requester_id = ${bind(opts.requesterId)}`);
   const statuses = STATUSES.filter(BRIEF_FILTERS[opts.filter]);
-  where.push(`b.status IN (${statuses.map(() => '?').join(',')})`);
-  params.push(...statuses);
+  where.push(`b.status IN (${statuses.map((s) => bind(s)).join(', ')})`);
   if (opts.q) {
-    const like = `%${escapeLike(opts.q)}%`;
-    where.push("(b.code LIKE ? ESCAPE '\\' OR b.judul LIKE ? ESCAPE '\\' OR b.produk LIKE ? ESCAPE '\\')");
-    params.push(like, like, like);
+    // lower(...) LIKE lower(...) = pencarian tak peka huruf besar/kecil yang sama di semua database SQL.
+    const like = bind(`%${escapeLike(opts.q)}%`);
+    where.push(`(lower(b.code) LIKE lower(${like}) ESCAPE '\\' OR lower(b.judul) LIKE lower(${like}) ESCAPE '\\' OR lower(b.produk) LIKE lower(${like}) ESCAPE '\\')`);
   }
-  const rows = db.prepare(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY b.submitted_at DESC, b.id DESC`).all(...params) as BriefRow[];
+  const rows = await db.query<BriefRow>(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY b.submitted_at DESC, b.id DESC`, params);
   return rows.map(toListItem);
 }
 
-export function getBriefRow(db: Db, id: number): BriefRow | undefined {
-  return db.prepare(`${SELECT} WHERE b.id = ?`).get(id) as BriefRow | undefined;
-}
+export const getBriefRow = (db: Queryable, id: number) => db.one<BriefRow>(`${SELECT} WHERE b.id = $1`, [id]);
 
-export function getBriefDetail(db: Db, id: number): BriefDetail | undefined {
-  const row = getBriefRow(db, id);
+export async function getBriefDetail(db: Queryable, id: number): Promise<BriefDetail | undefined> {
+  const row = await getBriefRow(db, id);
   if (!row) return undefined;
-  const a = db.prepare('SELECT * FROM brief_attributes WHERE brief_id = ?').get(id) as
-    | { talent: string; kostum: string; lokasi: BriefAttributes['lokasi']; lokasi_detail: string; properti: string; desain: string }
-    | undefined;
-  const history = db
-    .prepare(
-      `SELECT e.from_status, e.to_status, e.reason, e.created_at, u.name AS actor_name
-       FROM brief_events e LEFT JOIN users u ON u.id = e.actor_id
-       WHERE e.brief_id = ? ORDER BY e.id`,
-    )
-    .all(id) as { from_status: Status | null; to_status: Status; reason: string; created_at: string; actor_name: string | null }[];
+  const a = await db.one<{ talent: string; kostum: string; lokasi: BriefAttributes['lokasi']; lokasi_detail: string; properti: string; desain: string }>(
+    'SELECT * FROM brief_attributes WHERE brief_id = $1',
+    [id],
+  );
+  const history = await db.query<{ from_status: Status | null; to_status: Status; reason: string; created_at: string; actor_name: string | null }>(
+    `SELECT e.from_status, e.to_status, e.reason, e.created_at, u.name AS actor_name
+     FROM brief_events e LEFT JOIN users u ON u.id = e.actor_id
+     WHERE e.brief_id = $1 ORDER BY e.id`,
+    [id],
+  );
   const events: BriefEvent[] = history.map((h) => ({ from: h.from_status, to: h.to_status, actorName: h.actor_name, reason: h.reason, at: h.created_at }));
   return {
     ...toListItem(row),
@@ -172,43 +173,36 @@ export function getBriefDetail(db: Db, id: number): BriefDetail | undefined {
   };
 }
 
-export function updateBriefContent(db: Db, id: number, actorId: number, input: BriefInput): void {
-  db.transaction(() => {
-    db.prepare(
-      `UPDATE briefs SET kategori = ?, produk = ?, judul = ?, rasio = ?, durasi_detik = ?, link_docs = ?, catatan = ?,
-         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
-    ).run(input.kategori, input.produk, input.judul, input.rasio, input.durasiDetik, input.linkDocs, input.catatan, id);
-    writeAttributes(db, id, input.attributes);
-    audit(db, actorId, 'brief.update', 'brief', id);
-  })();
+export async function updateBriefContent(db: Db, id: number, actorId: number, input: BriefInput): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `UPDATE briefs SET kategori = $1, produk = $2, judul = $3, rasio = $4, durasi_detik = $5, link_docs = $6, catatan = $7,
+         updated_at = now() WHERE id = $8`,
+      [input.kategori, input.produk, input.judul, input.rasio, input.durasiDetik, input.linkDocs, input.catatan, id],
+    );
+    await writeAttributes(tx, id, input.attributes);
+    await audit(tx, actorId, 'brief.update', 'brief', id);
+  });
 }
 
-export function applyTransition(
+export async function applyTransition(
   db: Db,
   b: { id: number; jenis: Jenis; status: Status; revision_count: number },
   to: Status,
   actorId: number,
   reason: string,
-): void {
-  db.transaction(() => {
+): Promise<void> {
+  await db.transaction(async (tx) => {
     const now = new Date().toISOString();
-    const sets = ['status = ?', "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')"];
-    const params: (string | number | null)[] = [to];
-    if (to === 'complete') {
-      sets.push('completed_at = ?');
-      params.push(now);
-    }
-    if (to === 'revisi') {
-      sets.push('revision_count = ?');
-      params.push(b.revision_count + 1);
-    }
+    const params: unknown[] = [];
+    const bind = (v: unknown) => `$${params.push(v)}`;
+    const sets = [`status = ${bind(to)}`, 'updated_at = now()'];
+    if (to === 'complete') sets.push(`completed_at = ${bind(now)}`);
+    if (to === 'revisi') sets.push(`revision_count = ${bind(b.revision_count + 1)}`);
     // Kirim ulang dari Backlog: jam SLA dimulai lagi.
-    if (b.status === 'backlog') {
-      sets.push('submitted_at = ?', 'sla_target_at = ?');
-      params.push(now, slaTargetFor(b.jenis, now));
-    }
-    db.prepare(`UPDATE briefs SET ${sets.join(', ')} WHERE id = ?`).run(...params, b.id);
-    addEvent(db, b.id, b.status, to, actorId, reason);
-    audit(db, actorId, 'brief.transition', 'brief', b.id, { from: b.status, to, reason });
-  })();
+    if (b.status === 'backlog') sets.push(`submitted_at = ${bind(now)}`, `sla_target_at = ${bind(slaTargetFor(b.jenis, now))}`);
+    await tx.query(`UPDATE briefs SET ${sets.join(', ')} WHERE id = ${bind(b.id)}`, params);
+    await addEvent(tx, b.id, b.status, to, actorId, reason);
+    await audit(tx, actorId, 'brief.transition', 'brief', b.id, { from: b.status, to, reason });
+  });
 }

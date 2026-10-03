@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Role, UserDto } from '@ccp/shared';
 import { generateToken } from './config';
-import type { Db } from './db';
+import type { Queryable } from './db';
 
 export const COOKIE_NAME = 'ccp_sid';
 
@@ -15,7 +15,7 @@ export interface UserRow {
   role: Role;
   unit: string;
   jabatan: string;
-  active: number;
+  active: boolean;
 }
 
 export const toDto = (u: UserRow): UserDto => ({
@@ -25,44 +25,36 @@ export const toDto = (u: UserRow): UserDto => ({
   role: u.role,
   unit: u.unit,
   jabatan: u.jabatan,
-  active: u.active === 1,
+  active: u.active,
 });
 
-export function createSession(db: Db, userId: number, ttlMs: number): { token: string; expiresAt: Date } {
+export async function createSession(db: Queryable, userId: number, ttlMs: number): Promise<{ token: string; expiresAt: Date }> {
   const token = generateToken();
   const expiresAt = new Date(Date.now() + ttlMs);
-  db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(
-    hashToken(token),
-    userId,
-    expiresAt.toISOString(),
-  );
+  await db.query('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)', [hashToken(token), userId, expiresAt.toISOString()]);
   return { token, expiresAt };
 }
 
-/** Mengembalikan pengguna aktif pemilik sesi yang belum kedaluwarsa, atau null. */
-export function userForToken(db: Db, token: string): UserRow | null {
-  const row = db
-    .prepare(
-      `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-       WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1`,
-    )
-    .get(hashToken(token), new Date().toISOString());
-  return (row as UserRow | undefined) ?? null;
+/** Pengguna aktif pemilik sesi yang belum kedaluwarsa, atau null. */
+export async function userForToken(db: Queryable, token: string): Promise<UserRow | null> {
+  const row = await db.one<UserRow>(
+    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = $1 AND s.expires_at > now() AND u.active`,
+    [hashToken(token)],
+  );
+  return row ?? null;
 }
 
-export function deleteSession(db: Db, token: string): void {
-  db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
+export async function deleteSession(db: Queryable, token: string): Promise<void> {
+  await db.query('DELETE FROM sessions WHERE token_hash = $1', [hashToken(token)]);
 }
 
 /** Cabut semua sesi pengguna, kecuali sesi `exceptToken` bila diberikan. */
-export function revokeUserSessions(db: Db, userId: number, exceptToken?: string): void {
-  if (exceptToken) {
-    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?').run(userId, hashToken(exceptToken));
-  } else {
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
-  }
+export async function revokeUserSessions(db: Queryable, userId: number, exceptToken?: string): Promise<void> {
+  if (exceptToken) await db.query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [userId, hashToken(exceptToken)]);
+  else await db.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
 }
 
-export function purgeExpiredSessions(db: Db): void {
-  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(new Date().toISOString());
+export async function purgeExpiredSessions(db: Queryable): Promise<void> {
+  await db.query('DELETE FROM sessions WHERE expires_at <= now()');
 }

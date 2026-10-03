@@ -1,0 +1,17 @@
+# Postgres lokal untuk pengembangan (opsional; tanpa ini `npm run dev` memakai Postgres tertanam).
+#   docker compose up -d
+#   DATABASE_URL=postgres://ccp:ccp@localhost:5432/ccp npm run seed
+#   DATABASE_URL=postgres://ccp:ccp@localhost:5432/ccp npm run dev
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ccp
+      POSTGRES_PASSWORD: ccp
+      POSTGRES_DB: ccp
+    ports:
+      - '5432:5432'
+    volumes:
+      - ccp-pgdata:/var/lib/postgresql/data
+volumes:
+  ccp-pgdata:

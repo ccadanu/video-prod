@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app';
 import { loadConfig } from '../src/config';
-import { migrate, openDb, type Db } from '../src/db';
+import type { Db } from '../src/db';
+import { openTestDb, resetDb } from './helpers';
 import { hashPassword } from '../src/password';
 
 const PASSWORD = 'Rahasia-123';
@@ -17,7 +18,7 @@ const weekly = {
 const daily = { ...weekly, jenis: 'motion', judul: 'Motion Libur', rasio: '1:1', durasiDetik: 15, attributes: null };
 
 async function addUser(email: string, role: string) {
-  db.prepare('INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)').run(email, await hashPassword(PASSWORD), email.split('@')[0], role);
+  await db.query('INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4)', [email, await hashPassword(PASSWORD), email.split('@')[0], role]);
 }
 async function login(email: string): Promise<{ cookie: string }> {
   const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: PASSWORD } });
@@ -26,13 +27,19 @@ async function login(email: string): Promise<{ cookie: string }> {
 const call = (cookie: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', url: string, payload?: unknown) =>
   app.inject({ method, url, headers: { cookie }, ...(payload === undefined ? {} : { payload: payload as object }) });
 
-const setStatus = (id: number, status: string) => db.prepare('UPDATE briefs SET status = ? WHERE id = ?').run(status, id);
+const setStatus = async (id: number, status: string) => void (await db.query('UPDATE briefs SET status = $1 WHERE id = $2', [status, id]));
 
 let user: string, user2: string, leader: string, admin: string, vg: string;
 
+beforeAll(async () => {
+  db = await openTestDb();
+});
+afterAll(async () => {
+  await db.close();
+});
+
 beforeEach(async () => {
-  db = openDb(':memory:');
-  migrate(db);
+  await resetDb(db);
   app = await buildApp(db, { ...loadConfig({ NODE_ENV: 'test' }), allowedOrigins: [] });
   for (const [e, r] of [['user@x.test', 'user'], ['user2@x.test', 'user'], ['leader@x.test', 'leader'], ['admin@x.test', 'admin'], ['vg@x.test', 'videografer']] as const) {
     await addUser(e, r);
@@ -45,7 +52,6 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await app.close();
-  db.close();
 });
 
 async function create(cookie: string, body: unknown = weekly): Promise<{ id: number; code: string; status: string }> {
@@ -91,6 +97,14 @@ describe('buat brief', () => {
     expect((await call(user, 'GET', '/api/briefs')).json().briefs).toHaveLength(0);
   });
 
+  it('kode brief tetap unik saat banyak brief dibuat bersamaan', async () => {
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => call(user, 'POST', '/api/briefs', { ...daily, judul: `Paralel ${i}` })));
+    expect(results.map((r) => r.statusCode)).toEqual(Array(8).fill(201));
+    const codes = results.map((r) => r.json().brief.code as string);
+    expect(new Set(codes).size).toBe(8);
+    expect(codes.map((c) => Number(c.slice(-3))).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
   it('hanya User yang bisa membuat brief', async () => {
     for (const c of [leader, admin, vg]) expect((await call(c, 'POST', '/api/briefs', weekly)).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: '/api/briefs', payload: weekly })).statusCode).toBe(401);
@@ -125,8 +139,8 @@ describe('daftar & akses', () => {
     const a = await create(user, { ...weekly, judul: 'Alpha 100%' });
     const b = await create(user, { ...daily, judul: 'Beta' });
     const c = await create(user, { ...daily, judul: 'Gamma' });
-    setStatus(b.id, 'in_review');
-    setStatus(c.id, 'complete');
+    await setStatus(b.id, 'in_review');
+    await setStatus(c.id, 'complete');
     const titles = async (q: string) => (await call(user, 'GET', `/api/briefs?${q}`)).json().briefs.map((x: { judul: string }) => x.judul).sort();
     expect(await titles('filter=aktif')).toEqual(['Alpha 100%', 'Beta']);
     expect(await titles('filter=review')).toEqual(['Beta']);
@@ -167,7 +181,7 @@ describe('validasi Leader (Daily)', () => {
 describe('review User: approve / revisi', () => {
   it('Approve mengisi waktu selesai', async () => {
     const b = await create(user, daily);
-    setStatus(b.id, 'in_review');
+    await setStatus(b.id, 'in_review');
     const res = await call(user, 'POST', `/api/briefs/${b.id}/transition`, { to: 'complete' });
     expect(res.statusCode).toBe(200);
     expect(res.json().brief.status).toBe('complete');
@@ -176,7 +190,7 @@ describe('review User: approve / revisi', () => {
 
   it('Minta revisi wajib beralasan dan menambah hitungan revisi', async () => {
     const b = await create(user, daily);
-    setStatus(b.id, 'in_review');
+    await setStatus(b.id, 'in_review');
     expect((await call(user, 'POST', `/api/briefs/${b.id}/transition`, { to: 'revisi' })).statusCode).toBe(400);
     const res = await call(user, 'POST', `/api/briefs/${b.id}/transition`, { to: 'revisi', reason: 'Teks harga salah' });
     expect(res.json().brief).toMatchObject({ status: 'revisi', revisionCount: 1 });
@@ -184,7 +198,7 @@ describe('review User: approve / revisi', () => {
 
   it('hanya pemilik yang bisa review; Leader/Admin tidak', async () => {
     const b = await create(user, daily);
-    setStatus(b.id, 'in_review');
+    await setStatus(b.id, 'in_review');
     expect((await call(user2, 'POST', `/api/briefs/${b.id}/transition`, { to: 'complete' })).statusCode).toBe(404);
     expect((await call(leader, 'POST', `/api/briefs/${b.id}/transition`, { to: 'complete' })).statusCode).toBe(409);
     expect((await call(admin, 'POST', `/api/briefs/${b.id}/transition`, { to: 'complete' })).statusCode).toBe(409);
@@ -200,13 +214,13 @@ describe('review User: approve / revisi', () => {
 describe('perbaiki dari Backlog', () => {
   async function backlogged(body: unknown = daily) {
     const b = await create(user, body);
-    setStatus(b.id, 'backlog');
+    await setStatus(b.id, 'backlog');
     return b;
   }
 
   it('pemilik mengedit lalu mengirim ulang; jam SLA dimulai lagi', async () => {
     const b = await backlogged();
-    db.prepare("UPDATE briefs SET submitted_at = '2020-01-01T00:00:00.000Z', sla_target_at = '2020-01-02T00:00:00.000Z' WHERE id = ?").run(b.id);
+    await db.query("UPDATE briefs SET submitted_at = '2020-01-01T00:00:00.000Z', sla_target_at = '2020-01-02T00:00:00.000Z' WHERE id = $1", [b.id]);
     const edit = await call(user, 'PATCH', `/api/briefs/${b.id}`, { ...daily, judul: 'Motion Libur (revisi naskah)' });
     expect(edit.statusCode).toBe(200);
     expect(edit.json().brief.judul).toBe('Motion Libur (revisi naskah)');
@@ -226,7 +240,7 @@ describe('perbaiki dari Backlog', () => {
     expect((await call(user2, 'PATCH', `/api/briefs/${b.id}`, daily)).statusCode).toBe(404);
     expect((await call(leader, 'PATCH', `/api/briefs/${b.id}`, daily)).statusCode).toBe(403);
     expect((await call(user, 'PATCH', `/api/briefs/${b.id}`, { ...weekly })).statusCode).toBe(400);
-    setStatus(b.id, 'pending_review');
+    await setStatus(b.id, 'pending_review');
     expect((await call(user, 'PATCH', `/api/briefs/${b.id}`, daily)).statusCode).toBe(409);
   });
 });

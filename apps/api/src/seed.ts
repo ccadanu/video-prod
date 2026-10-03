@@ -11,8 +11,8 @@ if (config.env === 'production' && process.env.SEED_ADMIN_EMAIL === undefined) {
   process.exit(1);
 }
 
-const db = openDb(config.databasePath);
-migrate(db);
+const db = await openDb(config.databaseUrl);
+await migrate(db);
 
 const DEMO_PASSWORD = 'Ccp#Demo2026';
 const demo =
@@ -34,23 +34,24 @@ const demo =
         { email: 'arya@ccp.local', name: 'Arya Akbar Subakti', role: 'user', unit: 'Marketing', jabatan: 'Marketing Staff', password: DEMO_PASSWORD },
       ];
 
-const insert = db.prepare(
-  'INSERT OR IGNORE INTO users (email, password_hash, name, role, unit, jabatan) VALUES (?, ?, ?, ?, ?, ?)',
-);
 let created = 0;
 for (const u of demo) {
   if (u.password.length < 8) {
     console.error(`Password untuk ${u.email} minimal 8 karakter.`);
     process.exit(1);
   }
-  created += insert.run(u.email, await hashPassword(u.password), u.name, u.role, u.unit, u.jabatan).changes;
+  const rows = await db.query(
+    'INSERT INTO users (email, password_hash, name, role, unit, jabatan) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING id',
+    [u.email, await hashPassword(u.password), u.name, u.role, u.unit, u.jabatan],
+  );
+  created += rows.length;
 }
 
 // Brief contoh (dev saja) untuk pemohon demo, hanya bila belum ada brief.
 let briefsCreated = 0;
 if (config.env !== 'production') {
-  const requester = db.prepare("SELECT id FROM users WHERE email = 'arya@ccp.local'").get() as { id: number } | undefined;
-  const existing = (db.prepare('SELECT COUNT(*) AS n FROM briefs').get() as { n: number }).n;
+  const requester = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'arya@ccp.local'");
+  const existing = (await db.one<{ n: number }>('SELECT COUNT(*)::int AS n FROM briefs'))!.n;
   if (requester && existing === 0) {
     for (const s of [...SAMPLE_BRIEFS].reverse()) {
       const weekly = s.jenis === 'shooting_only' || s.jenis === 'shooting_edit' || s.jenis === 'photoshoot';
@@ -61,7 +62,7 @@ if (config.env !== 'production') {
       });
       const day = 86_400_000;
       const submittedAt = new Date(Date.now() - s.daysAgo * day);
-      insertBrief(db, {
+      await insertBrief(db, {
         requesterId: requester.id, input, status: s.status, actorId: requester.id, submittedAt,
         revisionCount: s.revisionCount ?? 0, reason: s.reason ?? '',
         completedAt: s.status === 'complete' ? new Date(submittedAt.getTime() + day) : null,
@@ -72,4 +73,4 @@ if (config.env !== 'production') {
 }
 console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh.`);
 if (config.env !== 'production') console.log(`Login demo: <email>@ccp.local / ${DEMO_PASSWORD}`);
-db.close();
+await db.close();

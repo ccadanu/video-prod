@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app';
 import { loadConfig } from '../src/config';
-import { migrate, openDb, type Db } from '../src/db';
+import { migrate, type Db } from '../src/db';
+import { openTestDb, resetDb } from './helpers';
 import { hashPassword, verifyPassword } from '../src/password';
 
 const PASSWORD = 'Rahasia-123';
@@ -10,14 +11,15 @@ let db: Db;
 let app: FastifyInstance;
 
 async function addUser(email: string, role: string, opts: { active?: boolean; name?: string } = {}) {
-  db.prepare('INSERT INTO users (email, password_hash, name, role, active) VALUES (?, ?, ?, ?, ?)').run(
+  await db.query('INSERT INTO users (email, password_hash, name, role, active) VALUES ($1, $2, $3, $4, $5)', [
     email,
     await hashPassword(PASSWORD),
     opts.name ?? email.split('@')[0],
     role,
-    opts.active === false ? 0 : 1,
-  );
+    opts.active !== false,
+  ]);
 }
+const idOf = async (email: string) => (await db.one<{ id: number }>('SELECT id FROM users WHERE email = $1', [email]))!.id;
 
 async function login(email: string, password = PASSWORD) {
   const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
@@ -25,9 +27,15 @@ async function login(email: string, password = PASSWORD) {
   return { res, cookie: cookie ? `ccp_sid=${cookie.value}` : '' };
 }
 
+beforeAll(async () => {
+  db = await openTestDb();
+});
+afterAll(async () => {
+  await db.close();
+});
+
 beforeEach(async () => {
-  db = openDb(':memory:');
-  migrate(db);
+  await resetDb(db);
   app = await buildApp(db, { ...loadConfig({ NODE_ENV: 'test' }), allowedOrigins: ['http://localhost:5173'] });
   await addUser('admin@x.test', 'admin');
   await addUser('user@x.test', 'user');
@@ -36,7 +44,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await app.close();
-  db.close();
 });
 
 describe('password', () => {
@@ -50,8 +57,8 @@ describe('password', () => {
 });
 
 describe('migrasi', () => {
-  it('idempoten: menjalankan ulang tidak menerapkan apa pun', () => {
-    expect(migrate(db)).toEqual([]);
+  it('idempoten: menjalankan ulang tidak menerapkan apa pun', async () => {
+    expect(await migrate(db)).toEqual([]);
   });
 });
 
@@ -86,9 +93,9 @@ describe('login & sesi', () => {
 
   it('login gagal tercatat di audit_log tanpa menyimpan password', async () => {
     await login('user@x.test', 'salah-salah');
-    const row = db.prepare("SELECT * FROM audit_log WHERE action = 'auth.login_failed'").get() as { detail: string };
+    const row = await db.one<{ detail: unknown }>("SELECT * FROM audit_log WHERE action = 'auth.login_failed'");
     expect(row).toBeTruthy();
-    expect(row.detail).not.toContain('salah-salah');
+    expect(JSON.stringify(row!.detail)).not.toContain('salah-salah');
   });
 
   it('logout mencabut sesi di server', async () => {
@@ -100,12 +107,12 @@ describe('login & sesi', () => {
 
   it('sesi tidak berlaku lagi bila akun dinonaktifkan atau sudah kedaluwarsa', async () => {
     const { cookie } = await login('user@x.test');
-    db.prepare("UPDATE users SET active = 0 WHERE email = 'user@x.test'").run();
+    await db.query("UPDATE users SET active = FALSE WHERE email = 'user@x.test'");
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(401);
 
-    db.prepare("UPDATE users SET active = 1 WHERE email = 'user@x.test'").run();
+    await db.query("UPDATE users SET active = TRUE WHERE email = 'user@x.test'");
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(200);
-    db.prepare("UPDATE sessions SET expires_at = '2000-01-01T00:00:00.000Z'").run();
+    await db.query("UPDATE sessions SET expires_at = '2000-01-01T00:00:00.000Z'");
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(401);
   });
 
@@ -200,7 +207,7 @@ describe('kelola pengguna (admin)', () => {
   it('menonaktifkan atau mengubah peran mencabut sesi pengguna tsb', async () => {
     const admin = await login('admin@x.test');
     const target = await login('user@x.test');
-    const id = (db.prepare("SELECT id FROM users WHERE email = 'user@x.test'").get() as { id: number }).id;
+    const id = await idOf('user@x.test');
     const res = await app.inject({ method: 'PATCH', url: `/api/users/${id}`, headers: { cookie: admin.cookie }, payload: { role: 'leader' } });
     expect(res.statusCode).toBe(200);
     expect(res.json().user.role).toBe('leader');
@@ -209,7 +216,7 @@ describe('kelola pengguna (admin)', () => {
 
   it('admin tidak bisa mengunci akunnya sendiri', async () => {
     const { cookie } = await login('admin@x.test');
-    const id = (db.prepare("SELECT id FROM users WHERE email = 'admin@x.test'").get() as { id: number }).id;
+    const id = await idOf('admin@x.test');
     const res = await app.inject({ method: 'PATCH', url: `/api/users/${id}`, headers: { cookie }, payload: { active: false } });
     expect(res.statusCode).toBe(400);
   });
@@ -217,7 +224,7 @@ describe('kelola pengguna (admin)', () => {
   it('reset password mengganti kredensial dan mencabut sesi', async () => {
     const admin = await login('admin@x.test');
     const target = await login('user@x.test');
-    const id = (db.prepare("SELECT id FROM users WHERE email = 'user@x.test'").get() as { id: number }).id;
+    const id = await idOf('user@x.test');
     const res = await app.inject({ method: 'POST', url: `/api/users/${id}/reset-password`, headers: { cookie: admin.cookie }, payload: { newPassword: 'Reset-Baru-1' } });
     expect(res.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: target.cookie } })).statusCode).toBe(401);

@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { NAV, flattenNav, navFor, type NavItem } from '@ccp/shared';
 import { AppShell } from './components/layout/AppShell';
 import { canAccessPath, homePathFor } from './lib/access';
@@ -10,6 +10,11 @@ import { BriefWizard } from './pages/BriefWizard';
 import { ComingSoon } from './pages/ComingSoon';
 import { Login } from './pages/Login';
 import logoMark from './assets/logo-mark.png';
+
+function EditBrief() {
+  const { id } = useParams();
+  return <BriefWizard key={`ubah-${id}`} mode="edit" />;
+}
 
 function Splash() {
   return (
@@ -52,10 +57,12 @@ export function App() {
         {[...NAV.filter((n) => n.key !== 'admin-users' && n.key !== 'brief-order'), ...flattenNav(NAV).filter((n) => !NAV.includes(n))].map((item) => (
           <Route key={item.key} path={item.path.slice(1)} element={<Pending item={item} />} />
         ))}
-        <Route path="brief-order" element={<BriefOrder />} />
-        <Route path="brief-order/arsip" element={<BriefOrder archive />} />
-        <Route path="brief-order/baru" element={<BriefWizard mode="new" />} />
-        <Route path="brief-order/:id/ubah" element={<BriefWizard mode="edit" />} />
+        {/* `key` memaksa komponen dibuat ulang: tanpa itu React memakai ulang instance yang sama saat berpindah antar rute
+            dan state lama (mis. filter) terbawa. */}
+        <Route path="brief-order" element={<BriefOrder key="list" />} />
+        <Route path="brief-order/arsip" element={<BriefOrder key="arsip" archive />} />
+        <Route path="brief-order/baru" element={<BriefWizard key="baru" mode="new" />} />
+        <Route path="brief-order/:id/ubah" element={<EditBrief />} />
         <Route path="admin/users" element={<AdminUsers />} />
         <Route path="account" element={<Account />} />
         <Route path="*" element={<Home />} />
