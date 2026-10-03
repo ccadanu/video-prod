@@ -5,6 +5,7 @@ import { ROLE_LABEL, navFor, type NavItem, type NavKey } from '@ccp/shared';
 import { useAuth } from '../../lib/auth';
 import { BUILT } from '../../lib/access';
 import { cx } from '../ui';
+import logoMark from '../../assets/logo-mark.png';
 
 const ICON: Record<NavKey, LucideIcon> = {
   dashboard: LayoutDashboard,
@@ -66,7 +67,7 @@ export function Sidebar() {
   return (
     <aside className="relative flex h-full w-[232px] flex-none flex-col overflow-hidden bg-navy-900 px-3.5 py-[18px] text-[#c7d6e2]">
       <div className="flex items-center gap-2.5 px-2 pb-5 pt-1.5">
-        <img src="/logo-mark.png" alt="" width={26} height={36} className="h-9 w-auto" />
+        <img src={logoMark} alt="" width={26} height={36} className="h-9 w-auto" />
         <div className="leading-tight">
           <b className="font-display text-[15px] font-bold text-white">CCP Video</b>
           <span className="block text-[10.5px] text-[#8fa8bc]">PT Adanu Adhinata Semesta</span>

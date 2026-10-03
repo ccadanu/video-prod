@@ -1,6 +1,20 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/montserrat';
-@import '@fontsource-variable/archivo';
+
+/* Hanya subset latin (cukup untuk bahasa Indonesia) agar bundel kecil. */
+@font-face {
+  font-family: 'Montserrat Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/montserrat/files/montserrat-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Archivo Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2') format('woff2-variations');
+}
 
 /*
  * Token desain. Warna merek mengikuti Graphic Standard Manual Asa Team
@@ -55,6 +69,10 @@
   body {
     @apply bg-canvas font-sans text-ink antialiased;
   }
+  /* Saat dihosting dalam skeleton pihak lain, aturan `body` mereka bisa menimpa; #root menjamin tampilan tetap. */
+  #root {
+    @apply bg-canvas font-sans text-ink;
+  }
   h1,
   h2,
   h3 {
@@ -68,7 +86,7 @@
 /* Anyaman merek (GSM "Graphic Element"): hanya sebagai tekstur halus, tidak di belakang data. */
 .weave {
   background-color: currentColor;
-  -webkit-mask: url('/weave.svg') 0 0 / 96px 96px repeat;
-  mask: url('/weave.svg') 0 0 / 96px 96px repeat;
+  -webkit-mask: url('../assets/weave.svg') 0 0 / 96px 96px repeat;
+  mask: url('../assets/weave.svg') 0 0 / 96px 96px repeat;
   pointer-events: none;
 }

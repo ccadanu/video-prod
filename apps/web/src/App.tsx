@@ -7,11 +7,12 @@ import { Account } from './pages/Account';
 import { AdminUsers } from './pages/AdminUsers';
 import { ComingSoon } from './pages/ComingSoon';
 import { Login } from './pages/Login';
+import logoMark from './assets/logo-mark.png';
 
 function Splash() {
   return (
     <div className="grid h-full place-items-center">
-      <img src="/logo-mark.png" alt="Memuat" width={36} className="h-12 w-auto animate-pulse" />
+      <img src={logoMark} alt="Memuat" width={36} className="h-12 w-auto animate-pulse" />
     </div>
   );
 }

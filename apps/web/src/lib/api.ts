@@ -14,6 +14,10 @@ interface Options {
 }
 
 export async function api<T>(path: string, { method = 'GET', body }: Options = {}): Promise<T> {
+  if (import.meta.env.VITE_DEMO === '1') {
+    const { demoApi } = await import('./demoApi');
+    return demoApi<T>(path, method, body);
+  }
   let res: Response;
   try {
     res = await fetch(path, {
