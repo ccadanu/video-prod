@@ -7,3 +7,4 @@ export * from './Field';
 export * from './Segmented';
 export * from './Stepper';
 export { cx } from './cx';
+export * from './JenisChip';

@@ -16,6 +16,13 @@ Hal-hal yang diputuskan sementara saat membangun. Tandai yang sudah dikonfirmasi
 | 8 | PIC Shotlist & Skrip (Hardi, Yofa) dimodelkan sebagai penanggung jawab yang bisa diubah, bukan nama tetap | PRD §6.5 | Usulan |
 | 9 | Frekuensi evaluasi: PRD 2-mingguan, BPM "FGD 1–2 bulan sekali jika perlu" | PRD §12 vs BPM | Belum konsisten |
 
+| 10 | Target SLA (hari kalender sejak submit): Shooting+Edit H+3, Shooting Only/Photoshoot H+2, Full AI/Editing Only/Motion H+1. Jam SLA dimulai lagi saat brief dikirim ulang dari Backlog | Angka dari mockup Brief Order | Belum dikonfirmasi |
+| 11 | Hanya peran User yang membuat brief; Leader memvalidasi brief Daily; Admin hanya melihat | PRD §2, §5 | Perlu konfirmasi |
+| 12 | Link brief harus https dan berdomain docs.google.com / drive.google.com | PRD §5.3 "Google Docs" | Usulan |
+| 13 | Durasi wajib kecuali Photoshoot; rasio dipilih (9:16, 1:1, 16:9, 4:5) dan durasi dalam detik, terpisah dari rasio | Mockup menggabungkan "Rasio & Durasi" | Usulan |
+| 14 | Lokasi "Lainnya" meminta keterangan lokasi | PRD §5.3 | Usulan |
+| 15 | Bulk Order Mode (opsional di PRD) belum dibuat | PRD §5.3 | Ditunda |
+
 ## Teknis
 
 - Peran `admin` ditambahkan (tidak ada di PRD) untuk kelola akun; admin tidak bisa melompati alur status.

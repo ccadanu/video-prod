@@ -7,6 +7,7 @@ import type { Config } from './config';
 import type { Db } from './db';
 import { COOKIE_NAME, userForToken, type UserRow } from './sessions';
 import { authRoutes } from './routes/auth';
+import { briefRoutes } from './routes/briefs';
 import { userRoutes } from './routes/users';
 
 declare module 'fastify' {
@@ -98,6 +99,7 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
   app.get('/api/health', async () => ({ ok: true }));
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(userRoutes, { prefix: '/api/users' });
+  await app.register(briefRoutes, { prefix: '/api/briefs' });
 
   return app;
 }

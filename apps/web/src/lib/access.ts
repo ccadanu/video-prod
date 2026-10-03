@@ -1,8 +1,17 @@
-import { NAV, flattenNav, navFor, type NavItem, type Role } from '@ccp/shared';
+import { NAV, flattenNav, navFor, type NavItem, type NavKey, type Role } from '@ccp/shared';
 
-/** Menu pertama yang boleh diakses peran tsb (tujuan setelah login). */
+/** Halaman kerja utama tiap peran (tujuan setelah login). Jika tidak tersedia, jatuh ke menu pertama. */
+const HOME: Record<Role, NavKey> = {
+  user: 'brief-order',
+  leader: 'brief-order',
+  videografer: 'weekly-listing',
+  editor: 'editing-execution',
+  admin: 'admin-users',
+};
+
 export function homePathFor(role: Role): string {
-  return flattenNav(navFor(role))[0]?.path ?? '/account';
+  const items = flattenNav(navFor(role));
+  return (items.find((n) => n.key === HOME[role]) ?? items[0])?.path ?? '/account';
 }
 
 /** Halaman di luar NAV (mis. /account) terbuka untuk semua yang sudah login. */
@@ -15,7 +24,7 @@ export function canAccessPath(role: Role, pathname: string): boolean {
 }
 
 /** Fitur yang sudah dibangun; sisanya tampil sebagai "Segera" di sidebar. */
-export const BUILT = new Set<string>(['admin-users']);
+export const BUILT = new Set<string>(['admin-users', 'brief-order']);
 
 export const ROADMAP: Record<string, { phase: string; blurb: string }> = {
   dashboard: { phase: 'Fase 5', blurb: 'Rangkuman performa tim: konten selesai, kepuasan User, kesesuaian SLA, revision rate.' },

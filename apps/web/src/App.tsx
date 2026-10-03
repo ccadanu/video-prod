@@ -5,6 +5,8 @@ import { canAccessPath, homePathFor } from './lib/access';
 import { useAuth } from './lib/auth';
 import { Account } from './pages/Account';
 import { AdminUsers } from './pages/AdminUsers';
+import { BriefOrder } from './pages/BriefOrder';
+import { BriefWizard } from './pages/BriefWizard';
 import { ComingSoon } from './pages/ComingSoon';
 import { Login } from './pages/Login';
 import logoMark from './assets/logo-mark.png';
@@ -47,9 +49,13 @@ export function App() {
       <Route path="/login" element={<Login />} />
       <Route element={<Protected />}>
         <Route index element={<Home />} />
-        {[...NAV.filter((n) => n.key !== 'admin-users'), ...flattenNav(NAV).filter((n) => !NAV.includes(n))].map((item) => (
+        {[...NAV.filter((n) => n.key !== 'admin-users' && n.key !== 'brief-order'), ...flattenNav(NAV).filter((n) => !NAV.includes(n))].map((item) => (
           <Route key={item.key} path={item.path.slice(1)} element={<Pending item={item} />} />
         ))}
+        <Route path="brief-order" element={<BriefOrder />} />
+        <Route path="brief-order/arsip" element={<BriefOrder archive />} />
+        <Route path="brief-order/baru" element={<BriefWizard mode="new" />} />
+        <Route path="brief-order/:id/ubah" element={<BriefWizard mode="edit" />} />
         <Route path="admin/users" element={<AdminUsers />} />
         <Route path="account" element={<Account />} />
         <Route path="*" element={<Home />} />
