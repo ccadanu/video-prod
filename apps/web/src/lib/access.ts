@@ -24,7 +24,7 @@ export function canAccessPath(role: Role, pathname: string): boolean {
 }
 
 /** Fitur yang sudah dibangun; sisanya tampil sebagai "Segera" di sidebar. */
-export const BUILT = new Set<string>(['admin-users', 'brief-order', 'weekly-listing', 'daily-shooting']);
+export const BUILT = new Set<string>(['admin-users', 'brief-order', 'weekly-listing', 'daily-shooting', 'editing-schedule', 'editing-execution']);
 
 export const ROADMAP: Record<string, { phase: string; blurb: string }> = {
   dashboard: { phase: 'Fase 5', blurb: 'Rangkuman performa tim: konten selesai, kepuasan User, kesesuaian SLA, revision rate.' },
@@ -32,7 +32,7 @@ export const ROADMAP: Record<string, { phase: string; blurb: string }> = {
   'production-board': { phase: 'Fase 3 · MVP', blurb: 'Ringkasan papan produksi lintas tahap.' },
   'weekly-listing': { phase: 'Fase 2 · MVP', blurb: 'Locking atribut, jadwal syuting per hari dengan kapasitas slot, dan validasi SDM oleh Leader.' },
   'daily-shooting': { phase: 'Fase 3 · MVP', blurb: 'Board syuting harian: take, bukti serah footage, Pull / Hold / Reschedule.' },
-  'editing-schedule': { phase: 'Fase 4', blurb: 'Leader meng-assign editor dan menjadwalkan editing. Menunggu keputusan SLA & kapasitas editor.' },
+  'editing-schedule': { phase: 'Fase 4', blurb: 'Leader meng-assign editor dan menjadwalkan editing: antrean FIFO + prioritas, beban editor per hari, tenggat SLA.' },
   'editing-execution': { phase: 'Fase 4', blurb: 'Board editor: To Do → On Progress → In Review.' },
   kpi: { phase: 'Fase 5', blurb: 'Performa per peran dan per individu untuk coaching.' },
   'blind-review': { phase: 'Fase 5', blurb: 'Evaluasi berkala dengan blind review dan FGD.' },

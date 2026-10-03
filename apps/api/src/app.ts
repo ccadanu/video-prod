@@ -11,6 +11,7 @@ import { COOKIE_NAME, userForToken, type UserRow } from './sessions';
 import { authRoutes } from './routes/auth';
 import { briefRoutes } from './routes/briefs';
 import { dailyRoutes } from './routes/daily';
+import { editingRoutes } from './routes/editing';
 import { weeklyRoutes } from './routes/weekly';
 import { userRoutes } from './routes/users';
 
@@ -101,6 +102,7 @@ export async function buildApp(db: Db, config: Config): Promise<FastifyInstance>
   await app.register(briefRoutes, { prefix: '/api/briefs' });
   await app.register(weeklyRoutes, { prefix: '/api/weekly' });
   await app.register(dailyRoutes, { prefix: '/api/daily' });
+  await app.register(editingRoutes, { prefix: '/api/editing' });
 
   return app;
 }

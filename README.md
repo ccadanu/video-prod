@@ -22,7 +22,7 @@ npm run seed      # akun + brief contoh (hanya dev)
 npm run dev       # API :3001 + web :5173
 ```
 
-Akun demo (password `Ccp#Demo2026`): `admin@`, `leader@`, `hardi@`, `yofa@`, `dio@`, `arya@` + `ccp.local`.
+Akun demo (password `Ccp#Demo2026`): `admin@`, `leader@`, `hardi@`, `yofa@`, `dio@`, `rara@`, `arya@` + `ccp.local`.
 
 ```bash
 npm run typecheck
@@ -54,5 +54,5 @@ bila web dilayani dari origin berbeda, dan buat admin awal dengan
 
 ## Status
 
-Fase 0 (fondasi), Fase 1 (Brief Order), Fase 2 (Weekly Listing), dan Fase 3 (Daily Shooting) selesai: MVP Fase 0–3 lengkap. Lihat `docs/ASSUMPTIONS.md` untuk asumsi yang perlu dikonfirmasi.
-Fase berikutnya (menunggu jawaban Open Item SLA editing, kapasitas editor, FIFO, definisi "Susah" paralel): Fase 4 Editing, Fase 5 Dashboard/KPI/Blind Review, Fase 6 deploy.
+Fase 0 (fondasi), Fase 1 (Brief Order), Fase 2 (Weekly Listing), dan Fase 3 (Daily Shooting), dan Fase 4 (Brief Editing Schedule + Editing Execution) selesai. MVP Fase 0–3 lengkap; Fase 4 memakai asumsi sementara untuk Open Item (lihat ASSUMPTIONS 32–37). Lihat `docs/ASSUMPTIONS.md` untuk asumsi yang perlu dikonfirmasi.
+Fase berikutnya: Fase 5 Dashboard/KPI/Blind Review (butuh spesifikasi dokumen terpisah), Fase 6 deploy.

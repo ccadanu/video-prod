@@ -1,4 +1,4 @@
-import { SAMPLE_BRIEFS, addDays, briefInputSchema, mondayOf, productionWeekFor, routeOf, sampleExecution, sampleWeekly, todayJakarta, type Status } from '@ccp/shared';
+import { SAMPLE_BRIEFS, SAMPLE_EDITING, SAMPLE_QUEUE, SAMPLE_REVIEW_FOOTAGE, addDays, briefInputSchema, mondayOf, nextWorkday, productionWeekFor, routeOf, sampleExecution, sampleWeekly, suggestDue, todayJakarta, type Status } from '@ccp/shared';
 import { insertBrief } from './briefs';
 import { syncSdm } from './weekly';
 import { loadConfig } from './config';
@@ -32,6 +32,7 @@ const demo =
         { email: 'hardi@ccp.local', name: 'Hardi', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', password: DEMO_PASSWORD },
         { email: 'yofa@ccp.local', name: 'Yofa', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', password: DEMO_PASSWORD },
         { email: 'dio@ccp.local', name: 'Dio', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
+        { email: 'rara@ccp.local', name: 'Rara', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
         { email: 'arya@ccp.local', name: 'Arya Akbar Subakti', role: 'user', unit: 'Marketing', jabatan: 'Marketing Staff', password: DEMO_PASSWORD },
       ];
 
@@ -46,6 +47,27 @@ for (const u of demo) {
     [u.email, await hashPassword(u.password), u.name, u.role, u.unit, u.jabatan],
   );
   created += rows.length;
+}
+
+
+const userIdOf = async (email: string) => (await db.one<{ id: number }>('SELECT id FROM users WHERE lower(email) = $1', [email]))?.id ?? null;
+
+/** Menempelkan kondisi editing (editor, jadwal, langkah, versi hasil) pada brief contoh. */
+async function seedEditing(briefId: number, ed: (typeof SAMPLE_EDITING)[string]): Promise<void> {
+  const eid = await userIdOf(`${ed.editor}@ccp.local`);
+  if (eid === null) return;
+  const row = await db.one<{ jenis: Parameters<typeof suggestDue>[0] }>('SELECT jenis FROM briefs WHERE id = $1', [briefId]);
+  const start = nextWorkday(todayJakarta());
+  await db.query(
+    `UPDATE briefs SET editor_id = $2, pic_id = $2, edit_bobot = $3, edit_scheduled_for = $4, edit_due = $5, edit_started_at = $6 WHERE id = $1`,
+    [briefId, eid, ed.bobot, ed.done ? addDays(start, -3) : start, ed.done ? addDays(start, -1) : suggestDue(row!.jenis, start), ed.started || ed.done ? new Date().toISOString() : null],
+  );
+  for (const key of ed.steps ?? []) await db.query('INSERT INTO edit_steps (brief_id, step_key, done_by) VALUES ($1, $2, $3)', [briefId, key, eid]);
+  for (let v = 1; v <= (ed.versions ?? 0); v++) {
+    await db.query('INSERT INTO deliverables (brief_id, version, url, note, submitted_by) VALUES ($1, $2, $3, $4, $5)', [
+      briefId, v, `https://drive.google.com/file/d/hasil-${briefId}-v${v}/view`, v > 1 ? 'Perbaikan sesuai catatan revisi' : '', eid,
+    ]);
+  }
 }
 
 // Brief contoh (dev saja) untuk pemohon demo, hanya bila belum ada brief.
@@ -64,7 +86,7 @@ if (config.env !== 'production') {
       });
       const day = 86_400_000;
       const submittedAt = new Date(Date.now() - s.daysAgo * day);
-      await insertBrief(db, {
+      const briefId = await insertBrief(db, {
         requesterId: requester.id, input, status: s.status, actorId: requester.id, submittedAt,
         revisionCount: s.revisionCount ?? 0, reason: s.reason ?? '',
         completedAt: s.status === 'complete' ? new Date(submittedAt.getTime() + day) : null,
@@ -74,6 +96,12 @@ if (config.env !== 'production') {
           : {}),
       });
       briefsCreated++;
+      const ed = SAMPLE_EDITING[s.judul];
+      if (ed) await seedEditing(briefId, ed);
+      if ((SAMPLE_REVIEW_FOOTAGE as readonly string[]).includes(s.judul)) {
+        const vg = await userIdOf('hardi@ccp.local');
+        await db.query('INSERT INTO footage_handoffs (brief_id, storage, drive_url, handed_by) VALUES ($1, $2, $3, $4)', [briefId, 'drive', `https://drive.google.com/drive/folders/review-${briefId}`, vg]);
+      }
     }
   }
 }
@@ -146,6 +174,23 @@ if (config.env !== 'production') {
     }
   }
 }
-console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh, ${weeklyCreated} konten pekan Weekly Listing, ${execCreated} konten pekan berjalan.`);
+
+// Antrean editing: konten Daily yang sudah lolos validasi dan menunggu Leader meng-assign editor.
+let queueCreated = 0;
+if (config.env !== 'production') {
+  const requester = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'arya@ccp.local'");
+  const exists = (await db.one<{ n: number }>('SELECT COUNT(*)::int AS n FROM briefs WHERE judul = $1', [SAMPLE_QUEUE[0]!.judul]))!.n;
+  if (requester && exists === 0) {
+    for (const q of SAMPLE_QUEUE) {
+      const input = briefInputSchema.parse({
+        jenis: q.jenis, kategori: q.kategori, produk: q.produk, judul: q.judul, rasio: q.rasio, durasiDetik: q.durasiDetik,
+        linkDocs: 'https://docs.google.com/document/d/contoh', catatan: q.catatan, attributes: null,
+      });
+      await insertBrief(db, { requesterId: requester.id, input, status: 'antre_editing', actorId: requester.id, submittedAt: new Date(Date.now() - q.daysAgo * 86_400_000) });
+      queueCreated++;
+    }
+  }
+}
+console.log(`Seed selesai: ${created} pengguna baru, ${briefsCreated} brief contoh, ${weeklyCreated} konten pekan Weekly Listing, ${execCreated} konten pekan berjalan, ${queueCreated} konten antrean editing.`);
 if (config.env !== 'production') console.log(`Login demo: <email>@ccp.local / ${DEMO_PASSWORD}`);
 await db.close();

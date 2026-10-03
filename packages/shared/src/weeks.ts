@@ -26,6 +26,33 @@ export function addDays(ymd: Ymd, days: number): Ymd {
   return fromUtc(new Date(toUtc(ymd).getTime() + days * MS_PER_DAY));
 }
 
+/** Hari kerja = Senin–Jumat. */
+export function isWorkday(ymd: Ymd): boolean {
+  const dow = toUtc(ymd).getUTCDay();
+  return dow >= 1 && dow <= 5;
+}
+
+/** Hari kerja pertama pada atau setelah tanggal tsb. */
+export function nextWorkday(ymd: Ymd): Ymd {
+  let d = ymd;
+  while (!isWorkday(d)) d = addDays(d, 1);
+  return d;
+}
+
+/** Tambah n hari kerja (Sabtu/Minggu dilewati). n = 0 → hari kerja pertama pada/setelah tanggal tsb. */
+export function addWorkdays(ymd: Ymd, n: number): Ymd {
+  let d = nextWorkday(ymd);
+  for (let i = 0; i < n; i++) d = nextWorkday(addDays(d, 1));
+  return d;
+}
+
+/** Valid sebagai tanggal kalender 'YYYY-MM-DD'. */
+export function isValidYmd(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && fromUtc(d) === value;
+}
+
 /** Senin dari pekan kalender yang memuat tanggal tsb. */
 export function mondayOf(ymd: Ymd): Ymd {
   const dow = toUtc(ymd).getUTCDay(); // 0 = Minggu

@@ -38,6 +38,16 @@ Hal-hal yang diputuskan sementara saat membangun. Tandai yang sudah dikonfirmasi
 | 29 | Bukti Serah Footage: Drive wajib tautan drive.google.com; HDD hanya catatan teks (nama disk, path, nama file) tanpa verifikasi. Setelah serah: Shooting+Edit → Antre Editing, Shooting Only/Photoshoot → In Review | PRD §6.7, BPM | Usulan |
 | 30 | Revisi Shooting Only/Photoshoot kembali ke VG (take ulang di kolom Belum Take); revisi Shooting+Edit kembali ke Editor | BPM | Perlu konfirmasi |
 | 31 | Leader dan Admin hanya membaca Daily Shooting; User tidak punya akses halaman ini | PRD §2 | Usulan |
+| 32 | SLA editing = tenggat per konten yang ditetapkan Leader saat assign. Usulan awal: Daily selesai H+1 hari kerja dari tanggal mulai (PRD §8.3), dari Syuting +3 hari kerja. Angka di `packages/shared/src/editing.ts` | PRD §8.3 (Open Item) | Perlu konfirmasi |
+| 33 | Kapasitas editor 6 slot per hari kerja (Gampang 1, Susah 2, sama dengan konversi syuting). Bobot editing ditetapkan Leader saat assign (terpisah dari bobot syuting). Melebihi kapasitas hanya memberi peringatan, tidak memblokir | PRD §8.3 (Open Item) | Perlu konfirmasi |
+| 34 | Aturan antrean: FIFO berdasarkan waktu masuk antrean (atau kembali sebagai revisi). Prioritas ditetapkan saat assign dan hanya mengurutkan papan editor; Leader bebas memilih konten mana yang di-assign lebih dulu | PRD §8.3 (Open Item) | Perlu konfirmasi |
+| 35 | Jadwal editing hanya hari kerja (Senin–Jumat), jendela pekan ini + pekan depan. Satu antrean gabungan Daily dan Dari Syuting, ditandai asalnya | PRD §8.2 | Usulan |
+| 36 | Langkah editing mengikuti alur Bispro (aset → klip → warna & audio → efek/subtitle → finishing → Self-QC → export), aset menyesuaikan jenis. Hanya Self-QC yang wajib dicentang sebelum kirim. Revisi membuka kembali Self-QC dan export | PRD §9.2–9.3 (Open Item) | Perlu konfirmasi |
+| 37 | Version control: setiap kirim ke In Review = versi baru (v1, v2, …) berupa link Google Drive; User mereview versi terbaru. Tidak ada target waktu editing selain tenggat (asumsi 32) | PRD §9.3 (Open Item) | Perlu konfirmasi |
+| 38 | PIC di Brief Order = editor yang di-assign (untuk Shooting + Edit menggantikan VG; riwayat tetap tersimpan di timeline). Mengganti editor mengembalikan konten ke To Do editor baru | PRD §5.1 | Usulan |
+| 39 | Revisi dari User kembali ke editor yang sama (To Do + alasan revisi). Revisi tanpa editor muncul di antrean Leader | PRD §4.4 | Usulan |
+| 40 | Hanya Editor yang mulai/mencentang/mengirim hasil; Leader meng-assign; Leader dan Admin hanya membaca Editing Execution, Admin hanya membaca Brief Editing Schedule | PRD §2 | Usulan |
+| 41 | Shooting Only dan Photoshoot tidak lewat Editor: bahan review User = footage Drive dari VG, tampil di detail Brief Order | PRD §4.2 | Disepakati |
 
 ## Teknis
 

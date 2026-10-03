@@ -13,6 +13,7 @@ import {
   type BriefListItem,
   type Jenis,
   type Rasio,
+  type ReviewMaterial,
   type Status,
 } from '@ccp/shared';
 import { audit, type Db, type Queryable } from './db';
@@ -159,6 +160,22 @@ export async function listBriefs(db: Queryable, opts: { requesterId?: number; fi
 
 export const getBriefRow = (db: Queryable, id: number) => db.one<BriefRow>(`${SELECT} WHERE b.id = $1`, [id]);
 
+async function reviewMaterialOf(db: Queryable, id: number): Promise<ReviewMaterial | null> {
+  const d = await db.one<{ version: number; url: string; note: string; submitted_at: string; by_name: string | null }>(
+    `SELECT d.version, d.url, d.note, d.submitted_at, u.name AS by_name FROM deliverables d LEFT JOIN users u ON u.id = d.submitted_by
+     WHERE d.brief_id = $1 ORDER BY d.version DESC LIMIT 1`,
+    [id],
+  );
+  if (d) return { source: 'editor', version: Number(d.version), url: d.url, note: d.note, at: d.submitted_at, byName: d.by_name };
+  // Shooting Only/Photoshoot tidak lewat Editor: yang direview adalah footage di Drive dari VG.
+  const f = await db.one<{ drive_url: string | null; handed_at: string; by_name: string | null }>(
+    `SELECT h.drive_url, h.handed_at, u.name AS by_name FROM footage_handoffs h JOIN briefs b ON b.id = h.brief_id
+     LEFT JOIN users u ON u.id = h.handed_by WHERE h.brief_id = $1 AND h.storage = 'drive' AND b.jenis IN ('shooting_only', 'photoshoot')`,
+    [id],
+  );
+  return f?.drive_url ? { source: 'footage', version: 1, url: f.drive_url, note: 'Footage dari Videografer', at: f.handed_at, byName: f.by_name } : null;
+}
+
 export async function getBriefDetail(db: Queryable, id: number): Promise<BriefDetail | undefined> {
   const row = await getBriefRow(db, id);
   if (!row) return undefined;
@@ -172,9 +189,11 @@ export async function getBriefDetail(db: Queryable, id: number): Promise<BriefDe
      WHERE e.brief_id = $1 ORDER BY e.id`,
     [id],
   );
+  const material = await reviewMaterialOf(db, id);
   const events: BriefEvent[] = history.map((h) => ({ from: h.from_status, to: h.to_status, actorName: h.actor_name, reason: h.reason, at: h.created_at }));
   return {
     ...toListItem(row),
+    reviewMaterial: material,
     linkDocs: row.link_docs,
     catatan: row.catatan,
     attributes: a

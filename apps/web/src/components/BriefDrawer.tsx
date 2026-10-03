@@ -130,6 +130,20 @@ export function BriefDrawer({ id, initialIntent, onClose }: { id: number | null;
           )}
           {!intent && err && <p role="alert" className="mb-4 text-[12.5px] text-danger">{err}</p>}
 
+          {brief.reviewMaterial && (
+            <Section title={brief.status === 'in_review' ? 'Bahan review' : 'Hasil terakhir'}>
+              <p className="text-[13px]">
+                <a href={brief.reviewMaterial.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-600 hover:underline">
+                  {brief.reviewMaterial.source === 'editor' ? `Buka hasil editing (v${brief.reviewMaterial.version})` : 'Buka footage di Drive'} <ExternalLink size={12} />
+                </a>
+              </p>
+              <p className="mt-1 text-[11.5px] text-muted">
+                Dikirim {fmtDateTime(brief.reviewMaterial.at)}{brief.reviewMaterial.byName && ` oleh ${brief.reviewMaterial.byName}`}
+                {brief.reviewMaterial.note && ` · ${brief.reviewMaterial.note}`}
+              </p>
+            </Section>
+          )}
+
           <Section title="Brief">
             <dl>
               <Row k="Kategori">{brief.kategori}</Row>

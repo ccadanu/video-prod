@@ -125,7 +125,18 @@ export interface BriefEvent {
   at: string;
 }
 
+/** Bahan yang direview User: hasil editing terbaru, atau footage VG untuk Shooting Only/Photoshoot. */
+export interface ReviewMaterial {
+  source: 'editor' | 'footage';
+  version: number;
+  url: string;
+  note: string;
+  at: string;
+  byName: string | null;
+}
+
 export interface BriefDetail extends BriefListItem {
+  reviewMaterial: ReviewMaterial | null;
   linkDocs: string;
   catatan: string;
   attributes: BriefAttributes | null;

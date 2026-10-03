@@ -153,3 +153,49 @@ export function sampleExecution(): SampleExecItem[] {
     mk(16, 4, 'ready', 'photoshoot', 'Bu Tatik', 'Kantor'),
   ];
 }
+
+// ───────────── Contoh Editing (Brief Editing Schedule & Editing Execution) ─────────────
+
+export interface SampleEditing {
+  editor: 'dio' | 'rara';
+  bobot: 'gampang' | 'susah';
+  /** Sudah mulai dikerjakan (On Progress). */
+  started?: boolean;
+  /** Sudah dikirim ke In Review atau selesai: jadwal di masa lalu. */
+  done?: boolean;
+  steps?: string[];
+  versions?: number;
+}
+
+const ALL_STEPS = ['aset', 'klip', 'warna', 'efek', 'finishing', 'selfqc', 'export'];
+
+/** Kondisi editing untuk brief contoh tertentu (kunci = judul di SAMPLE_BRIEFS). */
+export const SAMPLE_EDITING: Record<string, SampleEditing> = {
+  'Testimoni Etawaku': { editor: 'dio', bobot: 'gampang', started: true, steps: ['aset', 'klip'] },
+  'Full AI Teaser Event': { editor: 'rara', bobot: 'susah' },
+  'Motion Pengumuman Libur': { editor: 'dio', bobot: 'gampang', done: true, steps: ALL_STEPS, versions: 1 },
+  'Product Story Etawalin': { editor: 'dio', bobot: 'gampang', started: true, steps: ['aset', 'klip', 'warna', 'efek', 'finishing'], versions: 1 },
+  'Company Kit Sambutan': { editor: 'rara', bobot: 'susah', done: true, steps: ALL_STEPS, versions: 1 },
+  'Infografis Data Q2': { editor: 'dio', bobot: 'gampang', done: true, steps: ALL_STEPS, versions: 1 },
+};
+
+/** Brief contoh Shooting Only yang sedang In Review: footage Drive dari VG menjadi bahan review. */
+export const SAMPLE_REVIEW_FOOTAGE = ['Science Demo Glutafield'] as const;
+
+export interface SampleQueueItem {
+  judul: string;
+  produk: string;
+  kategori: string;
+  jenis: 'full_ai' | 'editing_only' | 'motion';
+  rasio: Rasio;
+  durasiDetik: number;
+  catatan: string;
+  daysAgo: number;
+}
+
+/** Konten Daily yang sudah lolos validasi dan menunggu assign editor. */
+export const SAMPLE_QUEUE: readonly SampleQueueItem[] = [
+  { judul: 'Motion Banner Promo Gajian', produk: 'FITGRAINS', kategori: 'Infografis', jenis: 'motion', rasio: '1:1', durasiDetik: 15, catatan: 'Warna mengikuti panduan promo bulan ini.', daysAgo: 2 },
+  { judul: 'Editing Testimoni Pelanggan', produk: 'ETAWAKU', kategori: 'Product Story', jenis: 'editing_only', rasio: '9:16', durasiDetik: 45, catatan: 'Footage mentah ada di folder Drive pada naskah.', daysAgo: 1 },
+  { judul: 'Full AI Visual Produk Baru', produk: 'ETALLAGEN', kategori: 'Lifestyle/Mood', jenis: 'full_ai', rasio: '9:16', durasiDetik: 20, catatan: '', daysAgo: 0 },
+];

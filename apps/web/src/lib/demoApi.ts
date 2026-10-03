@@ -28,6 +28,25 @@ import {
   sampleExecution,
   summarize,
   type DailyCard,
+  type DeliverableVersion,
+  type EditPriority,
+  type EditRow,
+  type Bobot,
+  type ReviewMaterial,
+  SAMPLE_EDITING,
+  SAMPLE_QUEUE,
+  SAMPLE_REVIEW_FOOTAGE,
+  REQUIRED_STEP,
+  RESET_ON_REVISION,
+  assignSchema,
+  buildEditorBoard,
+  buildSchedule,
+  isEditJenis,
+  isStepKey,
+  nextWorkday,
+  stepSchema,
+  submitSchema,
+  suggestDue,
   type DayBoard,
   type HandoffProof,
   type SdmItem,
@@ -73,13 +92,14 @@ interface Rec extends UserDto {
   password: string;
 }
 
-let nextId = 7;
+let nextId = 8;
 const users: Rec[] = [
   { id: 1, email: 'admin@ccp.local', name: 'Admin CCP', role: 'admin', unit: 'CCP', jabatan: 'Admin', active: true, password: DEMO_PASSWORD },
   { id: 2, email: 'leader@ccp.local', name: 'Nadia Pratama', role: 'leader', unit: 'CCP', jabatan: 'Leader Produksi', active: true, password: DEMO_PASSWORD },
   { id: 3, email: 'hardi@ccp.local', name: 'Hardi', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', active: true, password: DEMO_PASSWORD },
   { id: 4, email: 'yofa@ccp.local', name: 'Yofa', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', active: true, password: DEMO_PASSWORD },
   { id: 5, email: 'dio@ccp.local', name: 'Dio', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', active: true, password: DEMO_PASSWORD },
+  { id: 7, email: 'rara@ccp.local', name: 'Rara', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', active: true, password: DEMO_PASSWORD },
   { id: 6, email: 'arya@ccp.local', name: 'Arya Akbar Subakti', role: 'user', unit: 'Marketing', jabatan: 'Marketing Staff', active: true, password: DEMO_PASSWORD },
 ];
 
@@ -125,6 +145,17 @@ function find(id: string): Rec {
 
 // ───────────── Brief Order (memori) ─────────────
 
+interface EditRec {
+  editorId: number | null;
+  bobot: Bobot;
+  priority: EditPriority;
+  scheduledFor: string | null;
+  dueDate: string | null;
+  startedAt: string | null;
+  steps: string[];
+  versions: DeliverableVersion[];
+}
+
 interface BriefRec {
   id: number;
   code: string;
@@ -141,8 +172,11 @@ interface BriefRec {
   hold: string | null;
   proof: HandoffProof | null;
   picId: number | null;
+  ed: EditRec;
   history: { from: Status | null; to: Status; actorId: number | null; reason: string; at: string }[];
 }
+
+const nameOf = (id: number | null) => (id === null ? null : (users.find((u) => u.id === id)?.name ?? null));
 
 const DAY = 86_400_000;
 const briefs: BriefRec[] = [];
@@ -159,6 +193,7 @@ function pushBrief(requesterId: number, input: BriefInput, status: Status, at: D
     id: nextBriefId++, code: demoCode(at), requesterId, input, status, revisionCount: 0, submittedAt: at.toISOString(), completedAt: null,
     weekStart: isWeekly(input.jenis) ? productionWeekFor(todayJakarta(at)) : null, bobot: 'gampang', day: null,
     fu: { properti: '', kostum: '', desain: '' }, hold: null, proof: null, picId: null,
+    ed: { editorId: null, bobot: 'gampang', priority: 'normal', scheduledFor: null, dueDate: null, startedAt: null, steps: [], versions: [] },
     history: [{ from: null, to: status, actorId: requesterId, reason, at: at.toISOString() }], ...extra,
   };
   briefs.push(rec);
@@ -173,16 +208,37 @@ for (const [idx, s] of [...SAMPLE_BRIEFS].reverse().entries()) {
     attributes: weekly ? { talent: 'Cewek muda', kostum: 'Casual', lokasi: 'Studio', lokasiDetail: '', properti: 'Box product', desain: 'Tidak ada' } : null,
   });
   const at = new Date(Date.now() - s.daysAgo * DAY);
-  pushBrief(6, input, s.status, at, {
+  const rec = pushBrief(6, input, s.status, at, {
     revisionCount: s.revisionCount ?? 0,
     completedAt: s.status === 'complete' ? new Date(at.getTime() + DAY).toISOString() : null,
     // Weekly yang sudah melewati tahap perencanaan berasal dari pekan sebelumnya dan punya hari syuting.
     ...(weekly && !['listing', 'backlog', 'pending_review'].includes(s.status) ? { weekStart: addDays(productionWeekFor(todayJakarta()), -7), day: idx % 5 } : {}),
   }, s.reason ?? '');
+  const ed = SAMPLE_EDITING[s.judul];
+  if (ed) seedEditing(rec, ed);
+  if ((SAMPLE_REVIEW_FOOTAGE as readonly string[]).includes(s.judul)) {
+    rec.proof = { storage: 'drive', driveUrl: `https://drive.google.com/drive/folders/review-${rec.id}`, diskName: null, path: null, fileName: null, handedAt: at.toISOString(), handedByName: 'Hardi' };
+  }
+}
+
+/** Menempelkan kondisi editing pada brief contoh (editor, jadwal, langkah, versi hasil). */
+function seedEditing(rec: BriefRec, ed: (typeof SAMPLE_EDITING)[string]): void {
+  const start = nextWorkday(todayJakarta());
+  const eid = ed.editor === 'dio' ? 5 : 7;
+  rec.picId = eid;
+  rec.ed = {
+    editorId: eid, bobot: ed.bobot, priority: 'normal',
+    scheduledFor: ed.done ? addDays(start, -3) : start,
+    dueDate: ed.done ? addDays(start, -1) : suggestDue(rec.input.jenis, start),
+    startedAt: ed.started || ed.done ? new Date().toISOString() : null,
+    steps: [...(ed.steps ?? [])],
+    versions: Array.from({ length: ed.versions ?? 0 }, (_, i) => ({
+      version: i + 1, url: `https://drive.google.com/file/d/hasil-${rec.id}-v${i + 1}/view`, note: i > 0 ? 'Perbaikan sesuai catatan revisi' : '', at: new Date().toISOString(), byName: nameOf(eid),
+    })),
+  };
 }
 
 
-const nameOf = (id: number | null) => (id === null ? null : (users.find((u) => u.id === id)?.name ?? null));
 
 // Satu pekan contoh Weekly Listing (belum dikunci) agar alur Locking → Ready bisa dicoba.
 const SAMPLE_WEEK = productionWeekFor(todayJakarta());
@@ -195,6 +251,15 @@ for (const w of sampleWeekly()) {
   pushBrief(6, input, 'listing', new Date(), {
     weekStart: SAMPLE_WEEK, bobot: w.bobot, day: w.day, fu: { properti: w.fuProperti, kostum: w.fuKostum, desain: w.fuDesain },
   });
+}
+
+// Antrean editing: konten Daily yang lolos validasi dan menunggu assign editor.
+for (const q of SAMPLE_QUEUE) {
+  const input = briefInputSchema.parse({
+    jenis: q.jenis, kategori: q.kategori, produk: q.produk, judul: q.judul, rasio: q.rasio, durasiDetik: q.durasiDetik,
+    linkDocs: 'https://docs.google.com/document/d/contoh', catatan: q.catatan, attributes: null,
+  });
+  pushBrief(6, input, 'antre_editing', new Date(Date.now() - q.daysAgo * DAY));
 }
 
 // ───────────── Weekly Listing (memori) ─────────────
@@ -459,6 +524,108 @@ function dailyRoute(method: string, path: string, body: unknown): unknown | unde
   }
 }
 
+// ───────────── Editing (memori) ─────────────
+
+function editRows(): EditRow[] {
+  return briefs
+    .filter((b) => isEditJenis(b.input.jenis) && (['antre_editing', 'editing', 'revisi'].includes(b.status) || (b.status === 'in_review' && b.ed.editorId !== null)))
+    .map((b) => {
+      const queued = [...b.history].reverse().find((h) => h.to === 'antre_editing' || h.to === 'revisi');
+      const rev = [...b.history].reverse().find((h) => h.to === 'revisi');
+      return {
+        id: b.id, code: b.code, judul: b.input.judul, produk: b.input.produk, kategori: b.input.kategori, jenis: b.input.jenis, rasio: b.input.rasio,
+        durasiDetik: b.input.durasiDetik, status: b.status, linkDocs: b.input.linkDocs, catatan: b.input.catatan, revisionCount: b.revisionCount,
+        revisionReason: b.status === 'revisi' ? (rev?.reason ?? null) : null, queuedAt: queued?.at ?? b.submittedAt,
+        editorId: b.ed.editorId, editorName: nameOf(b.ed.editorId), bobot: b.ed.bobot, priority: b.ed.priority, scheduledFor: b.ed.scheduledFor,
+        dueDate: b.ed.dueDate, startedAt: b.ed.startedAt, doneSteps: b.ed.steps, footage: b.proof, versions: b.ed.versions,
+      };
+    });
+}
+const activeEditors = () => users.filter((u) => u.role === 'editor' && u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => ({ id: u.id, name: u.name }));
+
+function editingRoute(method: string, path: string, body: unknown): unknown | undefined {
+  if (path === '/api/editing/schedule' && method === 'GET') {
+    role('leader', 'admin');
+    return { schedule: buildSchedule(editRows(), activeEditors(), todayJakarta()) };
+  }
+  const board = /^\/api\/editing\/board(?:\?editorId=(.*))?$/.exec(path);
+  if (board && method === 'GET') {
+    const u = role('editor', 'leader', 'admin');
+    let eid: number | null = null;
+    if (u.role === 'editor') eid = u.id;
+    else if (board[1]) {
+      eid = Number(board[1]);
+      if (!Number.isInteger(eid) || eid <= 0) throw new ApiError(400, 'bad_id', 'ID tidak valid');
+    }
+    return { board: buildEditorBoard(editRows(), eid, todayJakarta()) };
+  }
+  const m = /^\/api\/editing\/contents\/(\d+)\/([a-z]+)$/.exec(path);
+  if (!m || method !== 'POST') return undefined;
+  const what = m[2]!;
+  const u = role(what === 'assign' ? 'leader' : 'editor');
+  const b = briefs.find((x) => x.id === Number(m[1]));
+  if (!b || !isEditJenis(b.input.jenis)) throw new ApiError(404, 'not_found', 'Konten tidak ditemukan');
+  const need = (cond: boolean, msg: string, code = 'bad_state') => {
+    if (!cond) throw conflict(code, msg);
+  };
+  const mine = () => {
+    if (b.ed.editorId !== u.id) throw new ApiError(403, 'not_assignee', 'Konten ini bukan tugas Anda');
+  };
+  switch (what) {
+    case 'assign': {
+      const input = assignSchema.parse(body);
+      need(['antre_editing', 'editing', 'revisi'].includes(b.status), 'Konten ini tidak bisa di-assign');
+      const ed = users.find((x) => x.id === input.editorId && x.role === 'editor' && x.active);
+      if (!ed) throw new ApiError(400, 'bad_editor', 'Editor tidak ditemukan atau tidak aktif');
+      const changed = b.ed.editorId !== null && b.ed.editorId !== input.editorId;
+      const detail = `${ed.name} · mulai ${input.scheduledFor} · tenggat ${input.dueDate}${input.priority === 'tinggi' ? ' · prioritas' : ''}`;
+      const wasQueued = b.status === 'antre_editing';
+      Object.assign(b.ed, { editorId: ed.id, bobot: input.bobot, priority: input.priority, scheduledFor: input.scheduledFor, dueDate: input.dueDate });
+      if (changed) b.ed.startedAt = null;
+      b.picId = ed.id;
+      const to: Status = wasQueued ? 'editing' : b.status;
+      b.history.push({ from: b.status, to, actorId: u.id, reason: wasQueued ? `Assign: ${detail}` : `Jadwal editing diubah: ${detail}`, at: new Date().toISOString() });
+      b.status = to;
+      return { ok: true };
+    }
+    case 'start':
+      mine();
+      if (b.status === 'revisi') {
+        b.history.push({ from: 'revisi', to: 'editing', actorId: u.id, reason: 'Mulai mengerjakan revisi', at: new Date().toISOString() });
+        b.status = 'editing';
+        b.ed.startedAt = new Date().toISOString();
+        b.ed.steps = b.ed.steps.filter((k) => !(RESET_ON_REVISION as readonly string[]).includes(k));
+      } else {
+        need(b.status === 'editing' && b.ed.startedAt === null, 'Konten ini tidak bisa dimulai');
+        b.ed.startedAt = new Date().toISOString();
+        b.history.push({ from: 'editing', to: 'editing', actorId: u.id, reason: 'Mulai edit', at: b.ed.startedAt });
+      }
+      return { ok: true };
+    case 'step': {
+      mine();
+      const { key, done } = stepSchema.parse(body);
+      need(b.status === 'editing' && b.ed.startedAt !== null, 'Mulai edit dulu sebelum mencentang langkah');
+      if (!isStepKey(b.input.jenis, key)) throw new ApiError(400, 'bad_step', 'Langkah tidak dikenal');
+      b.ed.steps = done ? [...new Set([...b.ed.steps, key])] : b.ed.steps.filter((k) => k !== key);
+      return { ok: true };
+    }
+    case 'submit': {
+      mine();
+      const input = submitSchema.parse(body);
+      need(b.status === 'editing' && b.ed.startedAt !== null, 'Konten belum berstatus On Progress');
+      need(b.ed.steps.includes(REQUIRED_STEP), 'Selesaikan Self-QC dulu sebelum mengirim ke In Review', 'selfqc_required');
+      const version = (b.ed.versions.at(-1)?.version ?? 0) + 1;
+      const now = new Date().toISOString();
+      b.ed.versions.push({ version, url: input.url, note: input.note, at: now, byName: u.name });
+      b.history.push({ from: 'editing', to: 'in_review', actorId: u.id, reason: `Hasil editing v${version} dikirim${input.note ? `: ${input.note}` : ''}`, at: now });
+      b.status = 'in_review';
+      return { ok: true };
+    }
+    default:
+      return undefined;
+  }
+}
+
 function role(...allowed: Rec['role'][]): Rec {
   const u = needAuth();
   if (!allowed.includes(u.role)) throw new ApiError(403, 'forbidden', 'Anda tidak memiliki akses');
@@ -624,9 +791,18 @@ function toItem(b: BriefRec): BriefListItem {
   };
 }
 
+function reviewMaterialOf(b: BriefRec): ReviewMaterial | null {
+  const v = b.ed.versions.at(-1);
+  if (v) return { source: 'editor', version: v.version, url: v.url, note: v.note, at: v.at, byName: v.byName };
+  if ((b.input.jenis === 'shooting_only' || b.input.jenis === 'photoshoot') && b.proof?.storage === 'drive' && b.proof.driveUrl) {
+    return { source: 'footage', version: 1, url: b.proof.driveUrl, note: 'Footage dari Videografer', at: b.proof.handedAt, byName: b.proof.handedByName };
+  }
+  return null;
+}
+
 function toDetail(b: BriefRec): BriefDetail {
   const history: BriefEvent[] = b.history.map((h) => ({ from: h.from, to: h.to, actorName: nameOf(h.actorId), reason: h.reason, at: h.at }));
-  return { ...toItem(b), linkDocs: b.input.linkDocs, catatan: b.input.catatan, attributes: b.input.attributes, history };
+  return { ...toItem(b), reviewMaterial: reviewMaterialOf(b), linkDocs: b.input.linkDocs, catatan: b.input.catatan, attributes: b.input.attributes, history };
 }
 
 function viewer(): Rec {
@@ -728,7 +904,7 @@ function briefRoute(method: string, path: string, body: unknown): unknown | unde
 }
 
 function route(method: string, path: string, body: unknown): unknown {
-  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body) ?? dailyRoute(method, path, body);
+  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body) ?? dailyRoute(method, path, body) ?? editingRoute(method, path, body);
   if (handled !== undefined) return handled;
 
   if (method === 'POST' && path === '/api/auth/login') {

@@ -104,7 +104,7 @@ export function Login() {
 
           {import.meta.env.DEV && !IS_DEMO && (
             <p className="mt-6 rounded-lg bg-brand-50 px-3 py-2 text-[11.5px] leading-relaxed text-brand-800">
-              <b>Dev:</b> admin@, leader@, hardi@, yofa@, dio@, arya@<code>ccp.local</code> · password <code>Ccp#Demo2026</code> (jalankan <code>npm run seed</code>).
+              <b>Dev:</b> admin@, leader@, hardi@, yofa@, dio@, rara@, arya@<code>ccp.local</code> · password <code>Ccp#Demo2026</code> (jalankan <code>npm run seed</code>).
             </p>
           )}
         </form>
