@@ -39,11 +39,22 @@ Tes: `npm test` (PGlite) atau `TEST_DATABASE_URL=postgres://…/ccp_test npm tes
 Aplikasi memakai SQL Postgres standar, logika bisnis di kode aplikasi, dan auth milik sendiri. Tidak ada ikatan ke vendor
 tertentu. Rinciannya, termasuk cara pindah ke server internal, ada di [`docs/PORTABILITAS.md`](docs/PORTABILITAS.md).
 
+## Deploy
+
+Image Docker tunggal (API + web) dengan Postgres, HTTPS otomatis opsional, backup, dan uji asap. Panduan lengkap beserta daftar periksa go-live:
+[`docs/DEPLOY.md`](docs/DEPLOY.md). Ringkasnya:
+
+```bash
+cp .env.production.example .env && nano .env
+docker compose -f docker-compose.prod.yml --profile tls up -d --build
+docker compose -f docker-compose.prod.yml run --rm app node apps/api/dist/seed.js   # admin awal
+./scripts/smoke.sh https://alamat-anda
+```
+
 ## Konfigurasi
 
-Lihat `apps/api/.env.example`. Di production: `NODE_ENV=production` (cookie `Secure`), set `ALLOWED_ORIGINS`
-bila web dilayani dari origin berbeda, dan buat admin awal dengan
-`NODE_ENV=production SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... npm run seed`.
+Lihat `apps/api/.env.example` (pengembangan) dan `.env.production.example` (produksi). Di production cookie bersifat `Secure` (wajib HTTPS);
+admin awal dibuat dengan `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`.
 
 ## Keamanan
 

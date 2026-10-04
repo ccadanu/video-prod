@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+**/dist-demo
+data
+.git
+.github
+docs
+backups
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store

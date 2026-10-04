@@ -8,7 +8,7 @@ import { hashPassword } from './password';
 
 const config = loadConfig();
 
-if (config.env === 'production' && process.env.SEED_ADMIN_EMAIL === undefined) {
+if (config.env === 'production' && !process.env.SEED_ADMIN_EMAIL) {
   console.error('Seed demo dinonaktifkan di production. Untuk membuat admin awal set SEED_ADMIN_EMAIL dan SEED_ADMIN_PASSWORD.');
   process.exit(1);
 }

@@ -11,6 +11,9 @@ export interface Config {
   cookieSameSite: 'lax' | 'strict' | 'none';
   /** Origin tambahan yang boleh melakukan request tulis (mis. Vite dev server). */
   allowedOrigins: string[];
+  /** Folder hasil build web. Terisi = API juga melayani web (satu proses/satu origin), tanpa reverse proxy khusus. */
+  webDist: string | null;
+  logLevel: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -23,8 +26,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: Number(env.PORT ?? 3001),
     databaseUrl: env.DATABASE_URL ?? 'pglite:data/pgdata',
     sessionTtlMs: Number(env.SESSION_TTL_HOURS ?? 24 * 7) * 3_600_000,
-    cookieSecure: mode === 'production' || env.COOKIE_SAMESITE === 'none',
+    // Production default Secure (wajib HTTPS). Jaringan internal tanpa HTTPS: set COOKIE_SECURE=false secara sadar.
+    cookieSecure: env.COOKIE_SECURE !== undefined ? env.COOKIE_SECURE === 'true' : mode === 'production' || env.COOKIE_SAMESITE === 'none',
     cookieSameSite: env.COOKIE_SAMESITE === 'none' || env.COOKIE_SAMESITE === 'strict' ? env.COOKIE_SAMESITE : 'lax',
+    webDist: env.WEB_DIST?.trim() || null,
+    logLevel: env.LOG_LEVEL ?? 'info',
     allowedOrigins: (env.ALLOWED_ORIGINS ?? 'http://localhost:5173').split(',').map((s) => s.trim()).filter(Boolean),
   };
 }

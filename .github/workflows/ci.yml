@@ -25,3 +25,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+  docker:
+    # Memastikan image produksi bisa dibangun dan hidup bersama Postgres sungguhan (uji asap yang sama dengan scripts/smoke.sh).
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ccp-video:ci .
+      - name: Uji asap image
+        run: |
+          docker network create ccp
+          docker run -d --name db --network ccp -e POSTGRES_USER=ccp -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=ccp postgres:16-alpine
+          until docker exec db pg_isready -U ccp; do sleep 1; done
+          docker run -d --name app --network ccp -p 3001:3001 -e DATABASE_URL=postgres://ccp:ci@db:5432/ccp -e COOKIE_SECURE=false ccp-video:ci
+          for i in $(seq 1 30); do curl -sf http://localhost:3001/api/health && break; sleep 1; done
+          ./scripts/smoke.sh http://localhost:3001
+      - if: failure()
+        run: docker logs app

@@ -1,0 +1,5 @@
+# HTTPS otomatis (Let's Encrypt untuk domain publik; sertifikat internal Caddy untuk domain lokal).
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3001
+}

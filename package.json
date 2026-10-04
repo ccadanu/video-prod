@@ -11,10 +11,11 @@
   },
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,yellow \"npm run dev -w @ccp/api\" \"npm run dev -w @ccp/web\"",
-    "build": "npm run build -w @ccp/web",
+    "build": "npm run build -w @ccp/web && npm run build -w @ccp/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "seed": "npm run seed -w @ccp/api"
+    "seed": "npm run seed -w @ccp/api",
+    "start": "node apps/api/dist/server.js"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

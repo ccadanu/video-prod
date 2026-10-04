@@ -1,0 +1,68 @@
+# Produksi: Postgres + aplikasi (+ Caddy untuk HTTPS otomatis, opsional).
+#
+#   cp .env.production.example .env        # isi nilainya (minimal POSTGRES_PASSWORD)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml run --rm app node apps/api/dist/seed.js   # admin awal (butuh SEED_ADMIN_* di .env)
+#
+# Dengan HTTPS otomatis (domain publik/DNS internal menunjuk ke server ini):
+#   docker compose -f docker-compose.prod.yml --profile tls up -d --build
+#
+# Panduan lengkap: docs/DEPLOY.md
+name: ccp
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ccp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Isi POSTGRES_PASSWORD di file .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ccp}
+      TZ: Asia/Jakarta
+    volumes:
+      - ccp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # Database tidak dipublikasikan ke luar; hanya aplikasi yang bisa menjangkaunya lewat jaringan compose.
+
+  app:
+    build: .
+    image: ${CCP_IMAGE:-ccp-video:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ccp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ccp}
+      # Production = cookie Secure (wajib HTTPS). Intranet tanpa HTTPS: COOKIE_SECURE=false.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+    ports:
+      # Default hanya localhost (di belakang Caddy/Nginx). Akses langsung dari jaringan: APP_BIND=0.0.0.0
+      - '${APP_BIND:-127.0.0.1}:${APP_PORT:-3001}:3001'
+
+  caddy:
+    profiles: [tls]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      DOMAIN: ${DOMAIN:?Isi DOMAIN di file .env untuk profil tls}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  ccp-pgdata:
+  caddy-data:
+  caddy-config:
