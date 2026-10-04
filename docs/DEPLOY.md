@@ -77,7 +77,7 @@ Cookie sesi bersifat `Secure` di production, jadi **login hanya bekerja lewat HT
 ## 6. Database
 
 - **Postgres di compose (default)**: data di volume `ccp-pgdata`, tidak dipublikasikan ke luar server.
-- **Postgres terkelola / server database sendiri / Supabase sebagai Postgres biasa**: hapus layanan `db` dari compose dan isi `DATABASE_URL`
+- **Postgres terkelola atau server database sendiri**: hapus layanan `db` dari compose dan isi `DATABASE_URL`
   langsung. Aplikasi hanya memakai SQL standar (tanpa ekstensi, RLS, atau fungsi vendor). Di balik PgBouncer juga aman.
 - Tidak ada langkah migrasi manual: berkas `apps/api/migrations/*.sql` dijalankan berurutan saat start.
 
