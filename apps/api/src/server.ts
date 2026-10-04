@@ -1,5 +1,6 @@
 import { buildApp } from './app';
 import { loadConfig } from './config';
+import { bootstrapAdmin } from './bootstrap';
 import { migrate, openDb } from './db';
 import { purgeExpiredSessions } from './sessions';
 
@@ -9,6 +10,8 @@ const applied = await migrate(db);
 const app = await buildApp(db, config);
 
 if (applied.length) app.log.info({ applied }, 'migrasi diterapkan');
+const boot = await bootstrapAdmin(db);
+if (boot === 'created') app.log.warn('Admin awal dibuat dari BOOTSTRAP_ADMIN_*. Segera login, ganti kata sandi, lalu hapus variabel tersebut.');
 await purgeExpiredSessions(db);
 setInterval(() => void purgeExpiredSessions(db).catch((e) => app.log.error(e)), 3_600_000).unref();
 

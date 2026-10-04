@@ -1,0 +1,13 @@
+# Konfigurasi Railway (hanya cabang deploy-external). Panduan: docs/DEPLOY_EXTERNAL.md
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway menyuntikkan PORT; aplikasi membacanya otomatis. Pemeriksaan kesehatan memastikan database terjangkau.
+healthcheckPath = "/api/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+# Satu replika saja (batas login bersifat per-proses; lihat docs/DEPLOY.md bagian 12).
+numReplicas = 1
