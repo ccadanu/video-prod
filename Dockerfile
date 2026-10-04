@@ -23,7 +23,7 @@ RUN npm ci --omit=dev --workspace=@ccp/api && npm cache clean --force
 
 # ── 3) Runtime ───────────────────────────────────────────────────────────────
 FROM node:22-alpine
-RUN apk add --no-cache tzdata
+RUN apk add --no-cache tzdata curl
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3001 \
