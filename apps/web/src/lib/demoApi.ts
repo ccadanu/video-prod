@@ -28,6 +28,8 @@ import {
   sampleExecution,
   summarize,
   type DailyCard,
+  arenaFor,
+  buildArena,
   MIN_RESPONSES,
   SAMPLE_EVAL_COMMENTS,
   SAMPLE_FGD,
@@ -112,7 +114,7 @@ interface Rec extends UserDto {
   password: string;
 }
 
-let nextId = 11;
+let nextId = 14;
 const users: Rec[] = [
   { id: 1, email: 'admin@ccp.local', name: 'Admin CCP', role: 'admin', unit: 'CCP', jabatan: 'Admin', active: true, password: DEMO_PASSWORD },
   { id: 2, email: 'leader@ccp.local', name: 'Nadia Pratama', role: 'leader', unit: 'CCP', jabatan: 'Leader Produksi', active: true, password: DEMO_PASSWORD },
@@ -122,6 +124,9 @@ const users: Rec[] = [
   { id: 8, email: 'sari@ccp.local', name: 'Sari Wulandari', role: 'user', unit: 'Sales', jabatan: 'Sales Executive', active: true, password: DEMO_PASSWORD },
   { id: 9, email: 'budi@ccp.local', name: 'Budi Santoso', role: 'user', unit: 'Operasional', jabatan: 'Staff Operasional', active: true, password: DEMO_PASSWORD },
   { id: 10, email: 'maya@ccp.local', name: 'Maya Putri', role: 'user', unit: 'Marketing', jabatan: 'Brand Executive', active: true, password: DEMO_PASSWORD },
+  { id: 11, email: 'gilang@ccp.local', name: 'Gilang', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', active: true, password: DEMO_PASSWORD },
+  { id: 12, email: 'tika@ccp.local', name: 'Tika', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', active: true, password: DEMO_PASSWORD },
+  { id: 13, email: 'bayu@ccp.local', name: 'Bayu', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', active: true, password: DEMO_PASSWORD },
   { id: 7, email: 'rara@ccp.local', name: 'Rara', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', active: true, password: DEMO_PASSWORD },
   { id: 6, email: 'arya@ccp.local', name: 'Arya Akbar Subakti', role: 'user', unit: 'Marketing', jabatan: 'Marketing Staff', active: true, password: DEMO_PASSWORD },
 ];
@@ -393,7 +398,7 @@ function weekDto(week: string, viewer: Rec): WeekDto {
 }
 
 // Riwayat ±3 bulan dan siklus evaluasi agar Dashboard, KPI, dan Blind Review berisi (sama dengan seed server).
-const HISTORY_IDS: Record<string, number> = { sari: 8, budi: 9, maya: 10, hardi: 3, yofa: 4, dio: 5, rara: 7 };
+const HISTORY_IDS: Record<string, number> = { sari: 8, budi: 9, maya: 10, hardi: 3, yofa: 4, bayu: 13, dio: 5, rara: 7, gilang: 11, tika: 12 };
 const historyBriefs = sampleHistory().map((x) => {
   const weekly = isWeekly(x.jenis);
   const input = briefInputSchema.parse({
@@ -405,11 +410,11 @@ const historyBriefs = sampleHistory().map((x) => {
   const editorId = x.editor ? HISTORY_IDS[x.editor]! : null;
   const rec = pushBrief(HISTORY_IDS[x.requester]!, input, 'complete', new Date(x.submittedAt), {
     completedAt: x.completedAt, revisionCount: x.revisions, picId: editorId ?? vgId,
-    ...(x.shoot ? { weekStart: x.shoot.weekStart, day: x.shoot.day } : {}),
+    ...(x.shoot ? { weekStart: x.shoot.weekStart, day: x.shoot.day, bobot: x.shootBobot } : {}),
     ...(x.shoot && vgId ? { proof: { storage: 'drive' as const, driveUrl: 'https://drive.google.com/drive/folders/riwayat', diskName: null, path: null, fileName: null, handedAt: x.shoot.handedAt, handedByName: nameOf(vgId) } } : {}),
   });
   if (x.edit && editorId) {
-    rec.ed = { editorId, bobot: 'gampang', priority: 'normal', scheduledFor: x.edit.due, dueDate: x.edit.due, startedAt: x.edit.deliveredAt, steps: [], versions: [{ version: 1, url: 'https://drive.google.com/file/d/riwayat/view', note: '', at: x.edit.deliveredAt, byName: nameOf(editorId) }] };
+    rec.ed = { editorId, bobot: x.editBobot, priority: 'normal', scheduledFor: x.edit.due, dueDate: x.edit.due, startedAt: x.edit.deliveredAt, steps: [], versions: [{ version: 1, url: 'https://drive.google.com/file/d/riwayat/view', note: '', at: x.edit.deliveredAt, byName: nameOf(editorId) }] };
   }
   return { x, rec };
 });
@@ -741,6 +746,7 @@ function statRows(): StatRow[] {
         shootDate: b.weekStart !== null && b.day !== null ? addDays(b.weekStart, b.day) : null,
         handedAt: b.proof?.handedAt ?? null, vgId: vg?.id ?? null, vgName: vg?.name ?? null,
         editDue: b.ed.dueDate, deliveredAt: b.ed.versions[0]?.at ?? null, editorId: b.ed.editorId, editorName: nameOf(b.ed.editorId),
+        shootBobot: b.weekStart !== null ? b.bobot : null, editBobot: b.ed.editorId !== null ? b.ed.bobot : null,
         ratings: responses.filter((r) => r.briefId === b.id && closedIds.has(r.cycleId)).map((r) => r.rating),
       };
     });
@@ -752,13 +758,25 @@ function periodOf(query: string | undefined): Period {
   return p;
 }
 
-function statsRoute(method: string, path: string): unknown | undefined {
-  const m = /^\/api\/stats\/(dashboard|kpi|pulse)(?:\?(.*))?$/.exec(path);
+let arenaPublic = true;
+
+function statsRoute(method: string, path: string, body?: unknown): unknown | undefined {
+  if (path === '/api/stats/arena-settings' && method === 'PUT') {
+    role('leader');
+    arenaPublic = z.object({ public: z.boolean() }).parse(body).public;
+    return { ok: true };
+  }
+  const m = /^\/api\/stats\/(dashboard|kpi|pulse|arena)(?:\?(.*))?$/.exec(path);
   if (!m || method !== 'GET') return undefined;
   const today = todayJakarta();
   if (m[1] === 'dashboard') {
     const u = role('user', 'leader', 'admin');
     return { dashboard: buildDashboard(statRows(), periodOf(m[2]), today, { role: u.role, id: u.id }) };
+  }
+  if (m[1] === 'arena') {
+    const u = role('leader', 'videografer', 'editor', 'admin');
+    const people = users.filter((x) => (x.role === 'videografer' || x.role === 'editor') && x.active).map((x) => ({ id: x.id, name: x.name, role: x.role as 'videografer' | 'editor' }));
+    return { arena: arenaFor(buildArena(statRows(), people, periodOf(m[2]), today), { role: u.role, id: u.id }, arenaPublic) };
   }
   if (m[1] === 'kpi') {
     const u = role('leader', 'videografer', 'editor', 'admin');
@@ -1162,7 +1180,7 @@ function briefRoute(method: string, path: string, body: unknown): unknown | unde
 }
 
 function route(method: string, path: string, body: unknown): unknown {
-  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body) ?? dailyRoute(method, path, body) ?? editingRoute(method, path, body) ?? statsRoute(method, path) ?? evalRoute(method, path, body);
+  const handled = briefRoute(method, path, body) ?? weeklyRoute(method, path, body) ?? dailyRoute(method, path, body) ?? editingRoute(method, path, body) ?? statsRoute(method, path, body) ?? evalRoute(method, path, body);
   if (handled !== undefined) return handled;
 
   if (method === 'POST' && path === '/api/auth/login') {

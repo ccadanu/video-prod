@@ -18,7 +18,7 @@ const TODAY = '2026-10-14'; // Rabu
 const at = (ymd: string) => `${ymd}T03:30:00.000Z`;
 const row = (o: Partial<StatRow> = {}): StatRow => ({
   id: 1, jenis: 'motion', kategori: 'Infografis', status: 'complete', requesterId: 10, requesterName: 'Sari', submittedAt: at('2026-10-06'), completedAt: at('2026-10-10'),
-  revisionCount: 0, shootDate: null, handedAt: null, vgId: null, vgName: null, editDue: '2026-10-08', deliveredAt: at('2026-10-08'), editorId: 20, editorName: 'Dio', ratings: [], ...o,
+  revisionCount: 0, shootDate: null, handedAt: null, vgId: null, vgName: null, editDue: '2026-10-08', deliveredAt: at('2026-10-08'), editorId: 20, editorName: 'Dio', shootBobot: null, editBobot: null, ratings: [], ...o,
 });
 
 describe('periode', () => {

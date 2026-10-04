@@ -1,3 +1,4 @@
+import type { Bobot } from './capacity';
 import { JENIS, isWeekly, type Jenis } from './jenis';
 import type { Role } from './roles';
 import type { Status } from './status';
@@ -45,6 +46,9 @@ export interface StatRow {
   deliveredAt: string | null;
   editorId: number | null;
   editorName: string | null;
+  /** Bobot syuting (Weekly) dan bobot editing yang ditetapkan Leader; dipakai untuk poin Papan Prestasi. */
+  shootBobot: Bobot | null;
+  editBobot: Bobot | null;
   /** Rating blind review (1–5) dari siklus evaluasi yang sudah ditutup. */
   ratings: number[];
 }
@@ -64,13 +68,13 @@ export function windowsOf(period: Period, today: Ymd): Windows {
   return { cur: { from, to: today }, prev: { from: addDays(from, -days), to: addDays(from, -1) } };
 }
 
-const ymdOf = (iso: string): Ymd => todayJakarta(new Date(iso));
-const within = (iso: string | null, r: Range): boolean => {
+export const ymdOf = (iso: string): Ymd => todayJakarta(new Date(iso));
+export const within = (iso: string | null, r: Range): boolean => {
   if (!iso) return false;
   const d = ymdOf(iso);
   return d >= r.from && d <= r.to;
 };
-const avg = (xs: readonly number[]): number | null => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+export const avg = (xs: readonly number[]): number | null => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const pctChange = (cur: number, prev: number): number | null => (prev === 0 ? null : ((cur - prev) / prev) * 100);
 
 export interface Delta {
@@ -82,7 +86,7 @@ const delta = (value: number, prev: number): Delta => ({ value, prev, pct: pctCh
 
 // ───────────── Metrik inti (dipakai dashboard & KPI) ─────────────
 
-interface Metrics {
+export interface Metrics {
   selesai: number;
   ratings: number[];
   syuting: { tepat: number; total: number };
@@ -91,7 +95,7 @@ interface Metrics {
 }
 
 /** Metrik satu jendela waktu. `onlyVg`/`onlyEditor` membatasi ke konten milik satu individu. */
-function metricsOf(rows: readonly StatRow[], r: Range): Metrics {
+export function metricsOf(rows: readonly StatRow[], r: Range): Metrics {
   const done = rows.filter((x) => within(x.completedAt, r));
   const shot = rows.filter((x) => x.shootDate !== null && within(x.handedAt, r));
   const edited = rows.filter((x) => x.editDue !== null && within(x.deliveredAt, r));
@@ -103,7 +107,7 @@ function metricsOf(rows: readonly StatRow[], r: Range): Metrics {
     revisi: { count: done.filter((x) => x.revisionCount > 0).length, total: done.length },
   };
 }
-const slaPct = (m: Metrics): number | null => {
+export const slaPct = (m: Metrics): number | null => {
   const total = m.syuting.total + m.editing.total;
   return total === 0 ? null : ((m.syuting.tepat + m.editing.tepat) / total) * 100;
 };
@@ -153,6 +157,8 @@ export interface DashboardDto {
   kategori: { name: string; count: number }[];
   heatmap: { statuses: Status[]; jenis: Jenis[]; cells: number[][] };
   funnel: { label: string; count: number }[];
+  /** Rata-rata hari dari submit sampai selesai, per jenis (konten selesai pada periode). */
+  leadTime: { jenis: Jenis; days: number; n: number }[];
 }
 
 function bucketKeys(period: Period, r: Range): { granularity: 'day' | 'week' | 'month'; keyOf: (d: Ymd) => string; keys: string[] } {
@@ -229,6 +235,10 @@ export function buildDashboard(rows: readonly StatRow[], period: Period, today: 
     kategori,
     heatmap: { statuses: [...HEATMAP_STATUSES], jenis: [...JENIS], cells },
     funnel,
+    leadTime: JENIS.map((jenis) => {
+      const xs = rows.filter((x) => x.jenis === jenis && within(x.completedAt, cur)).map((x) => (new Date(x.completedAt!).getTime() - new Date(x.submittedAt).getTime()) / 86_400_000);
+      return { jenis, days: avg(xs) ?? 0, n: xs.length };
+    }).filter((l) => l.n > 0),
   };
 }
 

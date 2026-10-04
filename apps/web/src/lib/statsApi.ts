@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CycleInput, DashboardDto, EvalCycle, EvalForm, EvalResult, KpiDto, Period, ResponseInput } from '@ccp/shared';
+import type { ArenaDto, CycleInput, DashboardDto, EvalCycle, EvalForm, EvalResult, KpiDto, Period, ResponseInput } from '@ccp/shared';
 import { api } from './api';
 
 export const useDashboard = (period: Period) =>
@@ -49,4 +49,15 @@ export function useEvalMutations() {
     addAction: useMutation({ mutationFn: (v: { id: number; text: string }) => api(`/api/eval/cycles/${v.id}/actions`, { method: 'POST', body: { text: v.text } }), onSuccess: done }),
     toggleAction: useMutation({ mutationFn: (v: { id: number; done: boolean }) => api(`/api/eval/actions/${v.id}`, { method: 'PATCH', body: { done: v.done } }), onSuccess: done }),
   };
+}
+
+export const useArena = (period: Period) =>
+  useQuery({ queryKey: ['stats', 'arena', period], queryFn: () => api<{ arena: ArenaDto }>(`/api/stats/arena?period=${period}`).then((r) => r.arena) });
+
+export function useArenaSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (value: boolean) => api('/api/stats/arena-settings', { method: 'PUT', body: { public: value } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['stats', 'arena'] }),
+  });
 }

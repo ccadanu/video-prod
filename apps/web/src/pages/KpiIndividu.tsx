@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { KPI_WEIGHTS, PERIOD_META, ROLE_LABEL, type KpiDto, type Period, type RoleKpi, type Scorecard } from '@ccp/shared';
+import { Arena } from '../components/arena/Arena';
 import { ChartCard, DeltaTag, StatTile, fmtNum, fmtPct } from '../components/charts';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, Empty, Segmented, cx } from '../components/ui';
@@ -10,7 +11,7 @@ import { fmtYmd } from '../lib/format';
 import { useCycles, useKpi } from '../lib/statsApi';
 import { PERIOD_OPTIONS } from './Dashboard';
 
-type Tab = 'ringkasan' | 'peran' | 'individu' | 'evaluasi';
+type Tab = 'ringkasan' | 'peran' | 'individu' | 'prestasi' | 'evaluasi';
 const errText = (e: unknown) => (e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Terjadi kesalahan');
 
 /** Skor 0–100 → label (usulan): ≥80 sesuai target, 60–79 perlu perhatian, <60 untuk coaching. */
@@ -88,6 +89,7 @@ export function KpiIndividu() {
     { value: 'ringkasan', label: 'Ringkasan' },
     { value: 'peran', label: 'Per Peran' },
     { value: 'individu', label: isLead ? 'Per Individu' : 'Scorecard Saya' },
+    { value: 'prestasi', label: '🏆 Papan Prestasi' },
     { value: 'evaluasi', label: 'Evaluasi' },
   ];
   const teamBand = scoreBand(k?.team.score ?? null);
@@ -98,7 +100,7 @@ export function KpiIndividu() {
     <>
       <PageHeader
         title="KPI Individu"
-        subtitle={isLead ? 'Performa per peran dan per individu untuk coaching, bukan untuk mencari kesalahan.' : 'Scorecard Anda. Hanya Anda dan Leader yang melihatnya.'}
+        subtitle={isLead ? 'Performa per peran dan per individu untuk coaching, bukan untuk mencari kesalahan.' : 'Scorecard pribadi hanya dilihat Anda dan Leader. Papan Prestasi mengikuti pengaturan Leader.'}
         actions={<Segmented label="Periode" value={period} onChange={setPeriod} options={PERIOD_OPTIONS} />}
       />
       <div className="px-7 pb-10">
@@ -137,6 +139,8 @@ export function KpiIndividu() {
             <p className="mt-3 text-[11.5px] text-muted">{isLead ? 'Leader melihat semua individu; setiap individu hanya melihat dirinya sendiri.' : `${ROLE_LABEL[user!.role]}: hanya Anda yang melihat scorecard ini selain Leader.`} Komponen yang belum punya data tidak menurunkan skor.</p>
           </>
         )}
+
+        {tab === 'prestasi' && <Arena period={period} canConfigure={user?.role === 'leader'} />}
 
         {tab === 'evaluasi' && (
           <>

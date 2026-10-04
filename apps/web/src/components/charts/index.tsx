@@ -182,7 +182,7 @@ export function Donut({ data, center, centerLabel, unit = '' }: { data: Slice[];
 
 // ───────────── Bar horizontal ─────────────
 
-export function HBar({ data, color = 'var(--viz-1)', unit = '', emphasize }: { data: { label: string; value: number }[]; color?: string; unit?: string; emphasize?: (label: string) => boolean }) {
+export function HBar({ data, color = 'var(--viz-1)', unit = '', digits = 0, emphasize }: { data: { label: string; value: number }[]; color?: string; unit?: string; digits?: number; emphasize?: (label: string) => boolean }) {
   const max = Math.max(1, ...data.map((d) => d.value));
   if (data.length === 0) return <p className="py-6 text-center text-xs text-faint">Belum ada data pada periode ini.</p>;
   return (
@@ -193,7 +193,7 @@ export function HBar({ data, color = 'var(--viz-1)', unit = '', emphasize }: { d
           <div className="h-3 overflow-hidden rounded-[3px] bg-[var(--viz-track)]" role="img" aria-label={`${d.label}: ${d.value}${unit}`}>
             <div className="h-full rounded-r-[4px]" style={{ width: `${(d.value / max) * 100}%`, background: color }} />
           </div>
-          <b className="w-8 text-right text-ink">{fmtNum(d.value)}{unit}</b>
+          <b className="min-w-8 whitespace-nowrap text-right text-ink">{fmtNum(d.value, digits)}{unit}</b>
         </li>
       ))}
     </ul>

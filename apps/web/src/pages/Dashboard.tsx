@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { JENIS_META, PERIODS, PERIOD_META, STATUS_META, type DashboardDto, type Jenis, type Period } from '@ccp/shared';
 import { ChartCard, DeltaTag, Donut, Funnel, Gauge, GroupedBars, HBar, Heatmap, StackedArea, StatTile, fmtNum, fmtPct } from '../components/charts';
 import { PageHeader } from '../components/layout/PageHeader';
+import { Arena } from '../components/arena/Arena';
 import { Segmented } from '../components/ui';
+import { useAuth } from '../lib/auth';
 import { ApiError } from '../lib/api';
 import { useDashboard } from '../lib/statsApi';
 import { fmtYmd } from '../lib/format';
@@ -25,9 +27,13 @@ export const PERIOD_OPTIONS = PERIODS.map((p) => ({ value: p, label: PERIOD_META
 const errText = (e: unknown) => (e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Terjadi kesalahan');
 
 export function Dashboard() {
+  const { user } = useAuth();
   const [period, setPeriod] = useState<Period>('1m');
+  const [view, setView] = useState<'ringkasan' | 'prestasi'>('ringkasan');
   const q = useDashboard(period);
   const d = q.data;
+  // Papan Prestasi memuat nama individu: hanya untuk Leader/Admin di Dashboard (tim produksi membukanya dari KPI Individu).
+  const canArena = user?.role === 'leader' || user?.role === 'admin';
 
   return (
     <>
@@ -37,9 +43,20 @@ export function Dashboard() {
         actions={<Segmented label="Periode" value={period} onChange={setPeriod} options={PERIOD_OPTIONS} />}
       />
       <div className="px-7 pb-10">
-        {q.isLoading && <p className="py-10 text-center text-[13px] text-faint">Memuat statistik…</p>}
-        {q.isError && <p role="alert" className="py-10 text-center text-[13px] text-danger">{errText(q.error)}</p>}
-        {d && <Body d={d} />}
+        {canArena && (
+          <div className="mb-4">
+            <Segmented label="Tampilan dashboard" value={view} onChange={setView} options={[{ value: 'ringkasan', label: 'Ringkasan Tim' }, { value: 'prestasi', label: '🏆 Papan Prestasi' }]} />
+          </div>
+        )}
+        {view === 'prestasi' && canArena ? (
+          <Arena period={period} canConfigure={user?.role === 'leader'} />
+        ) : (
+          <>
+            {q.isLoading && <p className="py-10 text-center text-[13px] text-faint">Memuat statistik…</p>}
+            {q.isError && <p role="alert" className="py-10 text-center text-[13px] text-danger">{errText(q.error)}</p>}
+            {d && <Body d={d} />}
+          </>
+        )}
       </div>
     </>
   );
@@ -160,13 +177,23 @@ function Body({ d }: { d: DashboardDto }) {
         </ChartCard>
       </div>
 
-      <ChartCard
-        title="Heatmap Bottleneck"
-        hint="Konten yang sedang berjalan: status × jenis pengerjaan (semua periode). Sel gelap = antrean menumpuk"
-        table={{ head: ['Status', ...d.heatmap.jenis.map((j) => JENIS_META[j].label)], rows: d.heatmap.statuses.map((s, i) => [STATUS_META[s].label, ...d.heatmap.cells[i]!]) }}
-      >
-        <Heatmap rows={d.heatmap.statuses.map((s) => STATUS_META[s].label)} cols={d.heatmap.jenis.map((j) => JENIS_META[j].label)} cells={d.heatmap.cells} />
-      </ChartCard>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <ChartCard
+          title="Heatmap Bottleneck"
+          hint="Konten yang sedang berjalan: status × jenis pengerjaan (semua periode). Sel gelap = antrean menumpuk"
+          className="lg:col-span-2"
+          table={{ head: ['Status', ...d.heatmap.jenis.map((j) => JENIS_META[j].label)], rows: d.heatmap.statuses.map((s, i) => [STATUS_META[s].label, ...d.heatmap.cells[i]!]) }}
+        >
+          <Heatmap rows={d.heatmap.statuses.map((s) => STATUS_META[s].label)} cols={d.heatmap.jenis.map((j) => JENIS_META[j].label)} cells={d.heatmap.cells} />
+        </ChartCard>
+        <ChartCard
+          title="Waktu Penyelesaian"
+          hint="Rata-rata hari dari submit sampai selesai, per jenis (konten selesai pada periode)"
+          table={{ head: ['Jenis pengerjaan', 'Rata-rata hari', 'Konten'], rows: d.leadTime.map((l) => [JENIS_META[l.jenis].label, fmtNum(l.days, 1), l.n]) }}
+        >
+          <HBar data={d.leadTime.map((l) => ({ label: JENIS_META[l.jenis].label, value: l.days }))} color="var(--viz-2)" unit=" hr" digits={1} />
+        </ChartCard>
+      </div>
     </>
   );
 }

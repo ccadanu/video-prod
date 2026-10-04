@@ -153,3 +153,52 @@ describe('KPI individu', () => {
     expect(JSON.stringify((await get('dio', '/api/stats/kpi')).json())).not.toContain('hardi');
   });
 });
+
+describe('Papan Prestasi', () => {
+  type Arena = import('@ccp/shared').ArenaDto;
+  const arena = async (who: string, q = '') => (await get(who, `/api/stats/arena${q}`)).json().arena as Arena;
+  const put = (who: string, body: unknown) => app.inject({ method: 'PUT', url: '/api/stats/arena-settings', headers: { cookie: ck[who]! }, payload: body as object });
+
+  beforeEach(async () => {
+    await complete({ requester: 'sari', editor: 'dio', rating: 5, dueDaysAgo: 4, delivered: 4 });
+    await complete({ requester: 'sari', editor: 'dio', dueDaysAgo: 4, delivered: 4 });
+    await complete({ requester: 'budi', editor: 'rara', revisions: 1, dueDaysAgo: 6, delivered: 5 });
+  });
+
+  it('akses: Leader/Admin/VG/Editor; User 403; hanya Leader mengatur visibilitas', async () => {
+    for (const w of ['leader', 'admin', 'hardi', 'dio']) expect((await get(w, '/api/stats/arena')).statusCode, w).toBe(200);
+    expect((await get('sari', '/api/stats/arena')).statusCode).toBe(403);
+    for (const w of ['admin', 'dio', 'sari']) expect((await put(w, { public: false })).statusCode, w).toBe(403);
+    expect((await put('leader', { public: 'ya' })).statusCode).toBe(400);
+  });
+
+  it('peringkat editor berdasarkan poin; Leader melihat rincian', async () => {
+    const a = await arena('leader', '?period=1m');
+    expect(a.mode).toBe('full');
+    expect(a.boards.editor.people.map((p) => p.name).slice(0, 2)).toEqual(['dio', 'rara']);
+    const dio = a.boards.editor.people[0]!;
+    expect(dio.points).toBe(10 + 5 + 5 + 4 + 10 + 5 + 5); // dua konten: dasar, tepat, tanpa revisi, + rating 5
+    expect(dio.breakdown).not.toBeNull();
+    expect(a.boards.editor.people[1]).toMatchObject({ points: 10, rank: 2 }); // rara: telat & direvisi → hanya poin dasar
+  });
+
+  it('default publik: Editor melihat papan lengkap tetapi detail rekan disembunyikan', async () => {
+    const a = await arena('rara', '?period=1m');
+    expect(a.mode).toBe('team');
+    expect(a.boards.editor.people.find((p) => p.name === 'dio')).toMatchObject({ breakdown: null, onTimePct: null, avgRating: null });
+    expect(a.boards.editor.people.find((p) => p.name === 'rara')!.breakdown).not.toBeNull();
+  });
+
+  it('Leader mematikan publik → Editor/VG hanya melihat dirinya (peringkat & ukuran papan tetap)', async () => {
+    expect((await put('leader', { public: false })).statusCode).toBe(200);
+    const a = await arena('rara', '?period=1m');
+    expect(a).toMatchObject({ mode: 'self', publicToTeam: false });
+    expect(a.boards.editor.people.map((p) => p.name)).toEqual(['rara']);
+    expect(a.boards.editor.people[0]!.rank).toBe(2);
+    expect(a.boards.editor.size).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(a)).not.toContain('dio');
+    expect((await arena('leader')).mode).toBe('full');
+    await put('leader', { public: true });
+    expect((await arena('rara')).mode).toBe('team');
+  });
+});

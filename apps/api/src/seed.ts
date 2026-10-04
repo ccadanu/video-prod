@@ -34,6 +34,9 @@ const demo =
         { email: 'yofa@ccp.local', name: 'Yofa', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', password: DEMO_PASSWORD },
         { email: 'dio@ccp.local', name: 'Dio', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
         { email: 'rara@ccp.local', name: 'Rara', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
+        { email: 'gilang@ccp.local', name: 'Gilang', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
+        { email: 'tika@ccp.local', name: 'Tika', role: 'editor', unit: 'CCP', jabatan: 'Video Editor', password: DEMO_PASSWORD },
+        { email: 'bayu@ccp.local', name: 'Bayu', role: 'videografer', unit: 'CCP', jabatan: 'Videografer', password: DEMO_PASSWORD },
         { email: 'arya@ccp.local', name: 'Arya Akbar Subakti', role: 'user', unit: 'Marketing', jabatan: 'Marketing Staff', password: DEMO_PASSWORD },
         { email: 'sari@ccp.local', name: 'Sari Wulandari', role: 'user', unit: 'Sales', jabatan: 'Sales Executive', password: DEMO_PASSWORD },
         { email: 'budi@ccp.local', name: 'Budi Santoso', role: 'user', unit: 'Operasional', jabatan: 'Staff Operasional', password: DEMO_PASSWORD },
@@ -204,7 +207,7 @@ if (config.env !== 'production') {
   const leaderRow = await db.one<{ id: number }>("SELECT id FROM users WHERE lower(email) = 'leader@ccp.local'");
   if (exists === 0 && leaderRow) {
     const ids = new Map<string, number>();
-    for (const u of ['sari', 'budi', 'maya', 'hardi', 'yofa', 'dio', 'rara']) ids.set(u, (await userIdOf(`${u}@ccp.local`))!);
+    for (const u of ['sari', 'budi', 'maya', 'hardi', 'yofa', 'bayu', 'dio', 'rara', 'gilang', 'tika']) ids.set(u, (await userIdOf(`${u}@ccp.local`))!);
     const briefIds: number[] = [];
     for (const x of history) {
       const weekly = isWeekly(x.jenis);
@@ -216,12 +219,12 @@ if (config.env !== 'production') {
       const requesterId = ids.get(x.requester)!;
       const id = await insertBrief(db, {
         requesterId, input, status: 'complete', actorId: requesterId, submittedAt: new Date(x.submittedAt), completedAt: new Date(x.completedAt), revisionCount: x.revisions,
-        ...(x.shoot ? { weekly: { weekStart: x.shoot.weekStart, bobot: 'gampang' as const, day: x.shoot.day, fuProperti: '', fuKostum: '', fuDesain: '' } } : {}),
+        ...(x.shoot ? { weekly: { weekStart: x.shoot.weekStart, bobot: x.shootBobot, day: x.shoot.day, fuProperti: '', fuKostum: '', fuDesain: '' } } : {}),
       });
       briefIds.push(id);
       const vgId = x.vg ? ids.get(x.vg)! : null;
       const editorId = x.editor ? ids.get(x.editor)! : null;
-      await db.query('UPDATE briefs SET pic_id = $2, editor_id = $3, edit_due = $4, edit_scheduled_for = $4 WHERE id = $1', [id, editorId ?? vgId, editorId, x.edit?.due ?? null]);
+      await db.query('UPDATE briefs SET pic_id = $2, editor_id = $3, edit_due = $4, edit_scheduled_for = $4, edit_bobot = $5 WHERE id = $1', [id, editorId ?? vgId, editorId, x.edit?.due ?? null, x.editBobot]);
       if (x.shoot && vgId) {
         await db.query('INSERT INTO footage_handoffs (brief_id, storage, drive_url, handed_by, handed_at) VALUES ($1, $2, $3, $4, $5)', [id, 'drive', `https://drive.google.com/drive/folders/riwayat-${id}`, vgId, x.shoot.handedAt]);
       }

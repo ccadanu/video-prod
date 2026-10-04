@@ -11,4 +11,5 @@ export * from './weekly';
 export * from './daily';
 export * from './editing';
 export * from './stats';
+export * from './arena';
 export * from './eval';

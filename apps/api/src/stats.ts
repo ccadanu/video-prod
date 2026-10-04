@@ -1,9 +1,13 @@
 import {
   addDays,
+  arenaFor,
+  buildArena,
   buildDashboard,
   buildKpi,
   todayJakarta,
   type DashboardDto,
+  type ArenaDto,
+  type Bobot,
   type Jenis,
   type KpiDto,
   type Period,
@@ -29,6 +33,8 @@ interface Raw {
   vg_id: number | null;
   vg_name: string | null;
   edit_due: string | null;
+  bobot: Bobot;
+  edit_bobot: Bobot;
   editor_id: number | null;
   editor_name: string | null;
   delivered_at: string | null;
@@ -39,7 +45,7 @@ export async function loadStatRows(db: Queryable): Promise<StatRow[]> {
   const [raws, ratings] = await Promise.all([
     db.query<Raw>(
       `SELECT b.id, b.jenis, b.kategori, b.status, b.requester_id, ru.name AS requester_name, b.submitted_at, b.completed_at, b.revision_count,
-              b.week_start, b.shoot_day, h.handed_at, h.handed_by AS vg_id, vg.name AS vg_name, b.edit_due, b.editor_id, ed.name AS editor_name,
+              b.week_start, b.shoot_day, b.bobot, b.edit_bobot, h.handed_at, h.handed_by AS vg_id, vg.name AS vg_name, b.edit_due, b.editor_id, ed.name AS editor_name,
               (SELECT min(d.submitted_at) FROM deliverables d WHERE d.brief_id = b.id) AS delivered_at
        FROM briefs b
        JOIN users ru ON ru.id = b.requester_id
@@ -61,7 +67,8 @@ export async function loadStatRows(db: Queryable): Promise<StatRow[]> {
     submittedAt: r.submitted_at, completedAt: r.completed_at, revisionCount: r.revision_count,
     shootDate: r.week_start !== null && r.shoot_day !== null ? addDays(r.week_start, r.shoot_day) : null,
     handedAt: r.handed_at, vgId: r.vg_id, vgName: r.vg_name, editDue: r.edit_due, deliveredAt: r.delivered_at,
-    editorId: r.editor_id, editorName: r.editor_name, ratings: byBrief.get(r.id) ?? [],
+    editorId: r.editor_id, editorName: r.editor_name,
+    shootBobot: r.week_start !== null ? r.bobot : null, editBobot: r.editor_id !== null ? r.edit_bobot : null, ratings: byBrief.get(r.id) ?? [],
   }));
 }
 
@@ -81,4 +88,27 @@ export async function getKpi(db: Queryable, period: Period, viewer: { role: Role
 export async function getPulse(db: Queryable, viewer: { role: Role; id: number }) {
   const d = await getDashboard(db, '2w', viewer);
   return { selesai: d.selesai, kepuasan: d.kepuasan, sla: d.sla, revisi: d.revisi, funnel: d.funnel, range: d.range };
+}
+
+export async function arenaPublic(db: Queryable): Promise<boolean> {
+  const r = await db.one<{ value: string }>("SELECT value FROM app_settings WHERE key = 'arena_public'");
+  return r ? r.value === 'true' : true;
+}
+
+export async function setArenaPublic(db: Queryable, actorId: number, value: boolean): Promise<void> {
+  await db.query(
+    `INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ('arena_public', $1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at`,
+    [String(value), actorId],
+  );
+}
+
+/** Papan Prestasi: dihitung penuh lalu disaring menurut peran pemirsa dan pengaturan visibilitas. */
+export async function getArena(db: Queryable, period: Period, viewer: { role: Role; id: number }): Promise<ArenaDto> {
+  const [rows, people, pub] = await Promise.all([
+    loadStatRows(db),
+    db.query<{ id: number; name: string; role: 'videografer' | 'editor' }>("SELECT id, name, role FROM users WHERE role IN ('videografer', 'editor') AND active = TRUE ORDER BY name, id"),
+    arenaPublic(db),
+  ]);
+  return arenaFor(buildArena(rows, people, period, todayJakarta()), viewer, pub);
 }

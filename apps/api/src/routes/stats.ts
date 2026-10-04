@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { isPeriod, type Period } from '@ccp/shared';
 import { HttpError } from '../app';
-import { getDashboard, getKpi, getPulse } from '../stats';
+import { z } from 'zod';
+import { audit } from '../db';
+import { getArena, getDashboard, getKpi, getPulse, setArenaPublic } from '../stats';
 
 function periodOf(raw: unknown): Period {
   const p = raw ?? '1m';
@@ -21,5 +23,15 @@ export async function statsRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: { period?: string } }>('/kpi', { preHandler: app.requireRole('leader', 'videografer', 'editor', 'admin') }, async (req) => ({
     kpi: await getKpi(db, periodOf(req.query.period), viewer(req)),
   }));
+  // Papan Prestasi (gamifikasi): tim produksi + Leader/Admin. Detail yang terlihat bergantung peran dan pengaturan Leader.
+  app.get<{ Querystring: { period?: string } }>('/arena', { preHandler: app.requireRole('leader', 'videografer', 'editor', 'admin') }, async (req) => ({
+    arena: await getArena(db, periodOf(req.query.period), viewer(req)),
+  }));
+  app.put('/arena-settings', { preHandler: app.requireRole('leader') }, async (req) => {
+    const { public: value } = z.object({ public: z.boolean() }).parse(req.body);
+    await setArenaPublic(db, req.user!.id, value);
+    await audit(db, req.user!.id, 'arena.visibility', 'setting', 0, { public: value });
+    return { ok: true };
+  });
   app.get('/pulse', { preHandler: app.requireRole('user', 'leader', 'videografer', 'editor', 'admin') }, async (req) => ({ pulse: await getPulse(db, viewer(req)) }));
 }

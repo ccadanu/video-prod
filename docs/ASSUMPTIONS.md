@@ -63,6 +63,12 @@ Hal-hal yang diputuskan sementara saat membangun. Tandai yang sudah dikonfirmasi
 | 54 | Blind di lapisan aplikasi: tidak ada layar/API yang menampilkan pengisi. Rating terhubung ke konten (untuk KPI), sehingga bukan anonim kriptografis: admin database secara teknis bisa menautkannya ke pemohon konten | PRD §12 | Perlu konfirmasi |
 | 55 | Hasil siklus terbuka hanya untuk Leader/Admin; VG/Editor melihat hasil dan tindak lanjut setelah siklus ditutup. FGD berupa catatan + daftar tindak lanjut (centang selesai) yang ditulis Leader. Form bukan tiket revisi | PRD §12 | Usulan |
 | 56 | Production Board menjadi halaman ringkasan (strip KPI 2 minggu + funnel + pintasan); klik strip membuka Dashboard (Leader/Admin/User) atau KPI Individu (VG/Editor) | PRD §3, §10 | Usulan |
+| 57 | Papan Prestasi (gamifikasi) ditambahkan atas permintaan, di luar PRD. Poin hanya bertambah (tanpa pengurangan) dan dikreditkan saat konten SELESAI, bukan saat dikirim. Papan dipisah per peran (Editor, Videografer) | Permintaan tambahan | Usulan |
+| 58 | Poin per konten: dasar 10; +5 tepat waktu (tahap milik orang itu); +5 bobot Susah; +5 disetujui tanpa revisi (VG: hanya jalur Shooting Only/Photoshoot); +2 / +4 untuk rating 4 / 5. Angka di `packages/shared/src/arena.ts` | Permintaan tambahan | Perlu konfirmasi |
+| 59 | Level dari poin sepanjang waktu: Rookie 0, Pro 100, Expert 250, Master 500, Legend 900. Lencana: Tepat Waktu, Streak 5/10, Zero Revisi, Favorit User, Jagoan Susah, Produktif, Naik Daun (syarat di panel "Cara kerja") | Permintaan tambahan | Usulan |
+| 60 | Tantangan tim (kolaboratif): konten selesai ≥ periode lalu, tepat waktu ≥ 90%, revision rate ≤ 25%, kepuasan ≥ 4,0 | Permintaan tambahan | Usulan |
+| 61 | Ketegangan dengan prinsip PRD §11–12 (no blame game, individu hanya melihat dirinya): Leader mengatur "Tampilkan peringkat ke seluruh tim" (default terbuka). Terbuka: tim melihat poin, level, streak, lencana rekan, tetapi BUKAN ketepatan waktu, rating, atau rincian poin rekan. Tertutup: tiap orang hanya melihat dirinya, peringkat, dan ukuran papan | PRD §11–12 | Perlu konfirmasi |
+| 62 | Dashboard Statistik ditambah panel Waktu Penyelesaian (rata-rata hari submit → selesai per jenis) dan tab Papan Prestasi untuk Leader/Admin; VG/Editor membukanya dari KPI Individu | Permintaan tambahan | Usulan |
 
 ## Teknis
 

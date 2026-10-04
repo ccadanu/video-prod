@@ -214,8 +214,10 @@ export interface SampleHistoryItem {
   submittedAt: string;
   completedAt: string;
   revisions: number;
-  vg: 'hardi' | 'yofa' | null;
-  editor: 'dio' | 'rara' | null;
+  vg: 'hardi' | 'yofa' | 'bayu' | null;
+  editor: 'dio' | 'rara' | 'gilang' | 'tika' | null;
+  shootBobot: 'gampang' | 'susah';
+  editBobot: 'gampang' | 'susah';
   /** Hari syuting (Weekly) dan kapan footage diserahkan. */
   shoot: { weekStart: string; day: number; handedAt: string } | null;
   /** Tenggat editing dan kapan hasil pertama dikirim. */
@@ -227,7 +229,7 @@ export interface SampleHistoryItem {
 const at = (ymd: string): string => `${ymd}T03:30:00.000Z`; // 10.30 WIB
 
 /** Konten selesai berdurasi ±3 bulan ke belakang dengan keterlambatan & revisi yang bervariasi (deterministik). */
-export function sampleHistory(today: string = todayYmd(), count = 84): SampleHistoryItem[] {
+export function sampleHistory(today: string = todayYmd(), count = 120): SampleHistoryItem[] {
   const r = mulberry(7);
   const pick = <T>(a: readonly T[]): T => a[Math.floor(r() * a.length)]!;
   const KAT = ['Talking Head', 'Talking Head', 'Product Story', 'Product Story', 'Science/Demo', 'Lifestyle/Mood', 'Infografis', 'Character/Skit', 'Company Kit'];
@@ -239,8 +241,8 @@ export function sampleHistory(today: string = todayYmd(), count = 84): SampleHis
     const jenis = pick(JENIS_POOL);
     const submitted = addDaysYmd(today, -(18 + Math.floor(r() * 95)));
     const revisions = r() < 0.7 ? 0 : r() < 0.8 ? 1 : 2;
-    const vg = jenis === 'full_ai' || jenis === 'editing_only' || jenis === 'motion' ? null : pick(['hardi', 'yofa'] as const);
-    const editor = jenis === 'shooting_only' || jenis === 'photoshoot' ? null : pick(['dio', 'rara'] as const);
+    const vg = jenis === 'full_ai' || jenis === 'editing_only' || jenis === 'motion' ? null : pick(['hardi', 'yofa', 'bayu'] as const);
+    const editor = jenis === 'shooting_only' || jenis === 'photoshoot' ? null : pick(['dio', 'rara', 'gilang', 'tika'] as const);
     const shootLate = r() < 0.15;
     const editLate = r() < 0.2;
     let shoot: SampleHistoryItem['shoot'] = null;
@@ -265,6 +267,7 @@ export function sampleHistory(today: string = todayYmd(), count = 84): SampleHis
       judul: `${pick(FRASA)} ${pick(PRODUK)} ${i + 1}`, produk: pick(PRODUK), kategori: pick(KAT), jenis,
       rasio: pick(['9:16', '9:16', '16:9', '1:1'] as const), durasiDetik: jenis === 'photoshoot' ? null : pick([20, 30, 45, 60]),
       requester: pick(['sari', 'budi', 'maya'] as const), submittedAt: at(submitted), completedAt: at(completed), revisions, vg, editor, shoot, edit,
+      shootBobot: r() < 0.3 ? 'susah' : 'gampang', editBobot: r() < 0.3 ? 'susah' : 'gampang',
       rating: r() < 0.85 ? Math.max(1, Math.min(5, Math.round(quality))) : null,
     });
   }
